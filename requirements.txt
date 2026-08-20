@@ -1,0 +1,10 @@
+# 後端 api.py 與建置腳本所需
+# 安裝： python -m venv .venv
+#        .venv/Scripts/python.exe -m pip install -r requirements.txt
+fastapi>=0.115
+uvicorn[standard]>=0.30
+numpy>=2.0
+scipy>=1.14
+osmium>=4.0
+shapely>=2.0
+pyproj>=3.6

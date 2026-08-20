@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>陸安安居指數｜交通安全分析</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<!--
+  ============================================================================
+  陸安安居指數 — 精簡版
+  ----------------------------------------------------------------------------
+  設計目標：一個螢幕看完、一眼看懂數據意義。完整版保留於 index_full.html。
+
+  兩種模式
+    🚶 走路安全  以選定地點為中心的 300m / 500m 生活圈
+    🛵 路線安全  起點 → 終點的騎車／開車路線，評估路線上的高風險路口
+
+  三個核心視覺化
+    ① 百分位標尺  把「72 分」翻成「比桃園 72% 的地方安全」——這是本產品分數
+                  為「相對值」的關鍵，用漸層標尺 + 中位數刻度直接表達
+    ② 路口計數圓  地圖 marker 直接顯示該路口事故件數，圓的大小與顏色隨件數
+                  變化，不必對照圖例即可判讀
+    ③ 月趨勢條    近兩年 24 個月，每月一根。不標逐月數字（擠不下也沒人看），
+                  只標年份轉折 + 月均虛線，一眼看出在變好還是變差
+
+  資料
+    ‧ 目前為示範資料（API_BASE = null）。期間：近兩年 2024-07 ～ 2026-06
+    ‧ 接後端：把 API_BASE 改成 '' 即改打真實 API，第 3 段示範資料可整段刪除
+  ============================================================================
+-->
+<style>
+:root{
+  --bg:#F4F6F9; --surface:#fff; --sunken:#F8FAFC;
+  --border:#E5E7EB; --border2:#D6DBE2;
+  --text:#111827; --muted:#6B7280; --faint:#9CA3AF;
+
+  --walk:#16A34A; --walk-soft:#ECFDF3;
+  --ride:#2563EB; --ride-soft:#EFF6FF;
+
+  --g1:#15803D; --g2:#65A30D; --g3:#CA8A04; --g4:#EA580C; --g5:#DC2626;
+  --r:14px; --r2:10px;
+  --sh:0 1px 2px rgba(16,24,40,.04),0 1px 3px rgba(16,24,40,.06);
+  --font:"Noto Sans TC","PingFang TC","Microsoft JhengHei",-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);
+  font-size:14.5px;line-height:1.6;-webkit-font-smoothing:antialiased}
+h1,h2,h3{margin:0;font-weight:700;line-height:1.3}
+p{margin:0} ul{margin:0;padding:0;list-style:none}
+button{font:inherit;cursor:pointer}
+a{color:var(--ride);text-decoration:none} a:hover{text-decoration:underline}
+:focus-visible{outline:2px solid var(--ride);outline-offset:2px;border-radius:4px}
+
+/* ── 示範資料提示 ───────────────────────────────────────── */
+.demo{background:#FEF3C7;border-bottom:1px solid #FCD34D;color:#78350F;
+  font-size:12px;padding:7px 20px;display:flex;gap:8px;align-items:center;justify-content:center;
+  flex-wrap:wrap;text-align:center}
+/* 作者 display:flex 會蓋掉 hidden 屬性的 UA display:none，接上後端後橫幅會賴著不走 */
+.demo[hidden]{display:none}
+.demo b{color:#451A03}
+.demo code{font-family:var(--mono);font-size:11px;background:rgba(0,0,0,.06);padding:1px 5px;border-radius:4px}
+
+/* ── Header ─────────────────────────────────────────────── */
+.hd{background:var(--surface);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:14px;padding:12px 20px;flex-wrap:wrap;
+  position:sticky;top:0;z-index:1200}
+.brand{display:flex;align-items:center;gap:10px}
+.mark{width:34px;height:34px;border-radius:10px;flex-shrink:0;display:grid;place-items:center;
+  background:linear-gradient(140deg,#3B82F6,#2563EB);color:#fff;box-shadow:0 2px 6px rgba(37,99,235,.3)}
+.brand h1{font-size:17px}
+.brand span{display:block;font-size:11.5px;color:var(--muted)}
+
+.tabs{display:flex;gap:6px;background:var(--sunken);padding:4px;border-radius:12px;border:1px solid var(--border)}
+.tab{display:flex;align-items:center;gap:8px;padding:8px 16px;border:0;border-radius:9px;
+  background:transparent;color:var(--muted);font-size:14px;font-weight:600;transition:.15s;text-align:left}
+.tab:hover{color:var(--text)}
+.tab[aria-selected="true"]{background:var(--surface);box-shadow:var(--sh);color:var(--text)}
+.tab[aria-selected="true"][data-m="walk"]{color:var(--walk)}
+.tab[aria-selected="true"][data-m="route"]{color:var(--ride)}
+.tab small{display:block;font-size:10.5px;font-weight:400;color:var(--faint);margin-top:-2px}
+.hd .right{margin-left:auto;display:flex;gap:6px;align-items:center;font-size:12px;color:var(--faint)}
+
+/* ── 版面：地圖 + 面板，一個螢幕 ────────────────────────── */
+.app{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:14px;padding:14px 20px;
+  max-width:1560px;margin:0 auto;align-items:start}
+.mapcard{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  box-shadow:var(--sh);overflow:hidden;position:relative}
+#map{height:min(calc(100vh - 210px),760px);min-height:430px;width:100%;cursor:crosshair;background:#E9EEF4}
+#map.picked{cursor:pointer}
+.leaflet-container{font-family:var(--font);font-size:12.5px}
+.leaflet-control-attribution{font-size:10px}
+
+.panel{display:flex;flex-direction:column;gap:12px;
+  max-height:min(calc(100vh - 210px),760px);overflow-y:auto;padding-right:2px}
+.panel::-webkit-scrollbar{width:8px}
+.panel::-webkit-scrollbar-thumb{background:var(--border2);border-radius:9px}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  box-shadow:var(--sh);padding:16px}
+.card.tight{padding:14px}
+.ctitle{font-size:12px;color:var(--faint);font-weight:600;letter-spacing:.4px;
+  display:flex;align-items:center;gap:6px;margin-bottom:11px}
+.ctitle .rt{margin-left:auto;font-weight:400;letter-spacing:0}
+
+/* ── 地圖疊層 ───────────────────────────────────────────── */
+.hint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:600;
+  pointer-events:none;background:rgba(17,24,39,.9);color:#fff;padding:12px 20px;border-radius:999px;
+  font-size:14px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.3);display:flex;gap:9px;
+  align-items:center;transition:opacity .3s,visibility .3s;white-space:nowrap}
+.hint small{display:block;font-size:11px;font-weight:400;opacity:.78;margin-top:1px}
+.hint.off{opacity:0;visibility:hidden}
+
+.mtools{position:absolute;left:12px;top:12px;z-index:600;display:flex;gap:6px;flex-wrap:wrap;
+  max-width:calc(100% - 24px)}
+.mtools button{display:flex;align-items:center;gap:6px;padding:7px 11px;background:rgba(255,255,255,.97);
+  border:1px solid var(--border2);border-radius:8px;font-size:12px;color:var(--text);box-shadow:var(--sh)}
+.mtools button:hover{background:var(--sunken)}
+.mtools button:disabled{opacity:.45;cursor:not-allowed}
+
+.mkey{position:absolute;right:12px;bottom:24px;z-index:600;background:rgba(255,255,255,.96);
+  border:1px solid var(--border);border-radius:var(--r2);padding:9px 11px;font-size:11.5px;
+  box-shadow:var(--sh);display:flex;flex-direction:column;gap:5px;color:var(--muted)}
+.mkey b{color:var(--text);font-size:11px;letter-spacing:.3px}
+.mkey div{display:flex;align-items:center;gap:7px}
+.kdot{width:15px;height:15px;border-radius:50%;border:2px solid #fff;flex-shrink:0;
+  box-shadow:0 1px 3px rgba(0,0,0,.25)}
+
+/* 核心視覺化②：路口計數圓 */
+.xn{background:none!important;border:0!important}
+.xn i{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;color:#fff;
+  font-weight:800;font-style:normal;border:2.5px solid #fff;box-shadow:0 2px 7px rgba(0,0,0,.35);
+  font-variant-numeric:tabular-nums}
+.xn.hi i{background:#DC2626;font-size:14px}
+.xn.md i{background:#EA580C;font-size:13px}
+.xn.lo i{background:#F59E0B;font-size:12px}
+.xn.on i{background:rgba(255,255,255,.92)!important;border-color:#2563EB;color:#1F2937;
+  outline:3px solid rgba(37,99,235,.35);outline-offset:2px}
+
+/* 展開後的個別事故點 */
+.apt{cursor:pointer}
+.apop{font-size:12.5px;line-height:1.75;min-width:186px}
+.apop b{color:#6B7280;font-weight:400}
+.apop .ah{font-size:13px;font-weight:700;color:#111827;margin-bottom:3px;
+  padding-bottom:4px;border-bottom:1px solid #E5E7EB}
+.apop .sev{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10.5px;
+  font-weight:700;color:#fff;margin-left:5px}
+.ptag{background:none!important;border:0!important}
+.ptag i{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;
+  font-style:normal;font-size:12px;font-weight:800;color:#fff;border:2.5px solid #fff;
+  box-shadow:0 2px 7px rgba(0,0,0,.3)}
+.ptag.s i{background:#16A34A} .ptag.e i{background:#DC2626}
+
+/* ── 分數區 ─────────────────────────────────────────────── */
+.score{display:flex;align-items:center;gap:16px}
+.dial{position:relative;width:96px;height:96px;flex-shrink:0}
+.dial svg{transform:rotate(-90deg)}
+.dial .val{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center}
+.dial .val b{font-size:31px;font-weight:800;letter-spacing:-1px;line-height:1;
+  font-variant-numeric:tabular-nums}
+.dial .val s{text-decoration:none;font-size:10px;color:var(--faint);margin-top:2px}
+.score .side{min-width:0;flex:1}
+.gradepill{display:inline-block;padding:4px 12px;border-radius:999px;font-size:13.5px;
+  font-weight:700;border:1.5px solid currentColor;background:#fff}
+.plain{font-size:14px;line-height:1.55;margin-top:9px;color:var(--text)}
+.conf{display:inline-flex;align-items:center;gap:6px;margin-top:9px;font-size:11.5px;color:var(--muted)}
+.conf i{width:8px;height:8px;border-radius:50%;background:var(--faint);display:block;flex-shrink:0}
+
+/* 核心視覺化①：百分位標尺 */
+.ruler{margin-top:16px;padding-top:15px;border-top:1px dashed var(--border)}
+.rtrack{position:relative;height:11px;border-radius:999px;margin:27px 0 8px;
+  background:linear-gradient(90deg,#DC2626 0%,#EA580C 25%,#EAB308 50%,#84CC16 75%,#15803D 100%)}
+.rmed{position:absolute;top:-5px;bottom:-5px;width:2px;background:rgba(17,24,39,.4);transform:translateX(-50%)}
+.rmed span{position:absolute;top:-20px;left:50%;transform:translateX(-50%);white-space:nowrap;
+  font-size:10px;color:var(--muted);background:var(--surface);padding:0 3px}
+.ryou{position:absolute;top:50%;transform:translate(-50%,-50%);width:20px;height:20px;
+  border-radius:50%;background:#fff;border:3.5px solid var(--text);
+  box-shadow:0 2px 6px rgba(0,0,0,.28);transition:left .55s cubic-bezier(.4,1.3,.5,1)}
+.ryou::after{content:attr(data-v);position:absolute;bottom:24px;left:50%;transform:translateX(-50%);
+  background:var(--text);color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;
+  white-space:nowrap}
+.rends{display:flex;justify-content:space-between;font-size:11px;color:var(--faint)}
+
+/* ── 關鍵數字 ───────────────────────────────────────────── */
+.nums{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);
+  border:1px solid var(--border);border-radius:var(--r2);overflow:hidden}
+.nums>div{background:var(--sunken);padding:11px 6px;text-align:center}
+.nums .k{font-size:11px;color:var(--faint)}
+.nums .v{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.25}
+.nums .v s{text-decoration:none;font-size:11px;font-weight:500;color:var(--faint);margin-left:2px}
+
+/* 核心視覺化③：月趨勢條（近兩年，每月一根）+ 3 個月移動平均線
+   ‧ 長條負責「有多少」、藍線負責「往哪走」。單月只有 2~5 件時，長條本身全是雜訊，
+     趨勢要靠平滑後的線才讀得出來（同疫情期間「每日確診 + 7 日平均」的畫法）
+   ‧ 不標每月數字：24 個數字擠在 370px 內無法閱讀，且會誘導對單月下結論
+   ‧ 只標年份轉折與頭尾，逐月數值走 hover tooltip */
+.sparkhd{font-size:11px;color:var(--faint);margin-top:15px;display:flex;align-items:center;gap:7px}
+.sparkhd em{font-style:normal;display:flex;align-items:center;gap:4px;color:var(--muted)}
+.sparkhd em::before{content:"";width:12px;height:2.5px;border-radius:2px;background:#2563EB;flex-shrink:0}
+.sparkhd b{margin-left:auto;font-weight:400;color:var(--muted);white-space:nowrap}
+.spark{position:relative;display:flex;align-items:flex-end;gap:2px;height:56px;margin-top:7px}
+.spark>i{flex:1;min-width:0;display:block;border-radius:2px 2px 0 0;background:#E2E8F0;
+  min-height:3px;transition:height .5s ease}
+.spark>svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+.sparkx{display:flex;gap:2px;margin-top:4px;height:14px}
+.sparkx span{flex:1;min-width:0;text-align:center;white-space:nowrap;font-size:10px;
+  color:var(--faint);font-variant-numeric:tabular-nums}
+.sparkx span.s0{text-align:left} .sparkx span.sL{text-align:right}
+.trendnote{font-size:12px;color:var(--muted);margin-top:10px}
+.trendnote b.up{color:var(--g5)} .trendnote b.down{color:var(--g1)}
+
+/* ── 高風險路口清單 ─────────────────────────────────────── */
+.xlist{display:flex;flex-direction:column;gap:8px}
+.xitem{display:flex;align-items:center;gap:11px;padding:10px 11px;border:1px solid var(--border);
+  border-radius:var(--r2);background:var(--surface);text-align:left;width:100%;transition:.15s}
+.xitem:hover{border-color:var(--border2);background:var(--sunken)}
+.xitem.on{border-color:var(--ride);background:var(--ride-soft)}
+.xbadge{width:31px;height:31px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;
+  color:#fff;font-size:13px;font-weight:800;font-variant-numeric:tabular-nums}
+.xbadge.hi{background:#DC2626} .xbadge.md{background:#EA580C} .xbadge.lo{background:#F59E0B}
+.xbody{flex:1;min-width:0}
+.xname{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.xmeta{font-size:11.5px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.xopen{font-size:11px;color:var(--ride);margin-top:3px;font-weight:600}
+.xitem.on .xopen{color:var(--g5)}
+.xrank{flex-shrink:0;text-align:right}
+.xrank b{display:block;font-size:12.5px;font-weight:700}
+.xrank b.bad{color:var(--g5)} .xrank b.mid{color:var(--g3)} .xrank b.ok{color:var(--g1)}
+.xrank s{text-decoration:none;color:var(--faint);font-size:10px}
+
+/* ── 路線模式 ───────────────────────────────────────────── */
+.od{display:flex;flex-direction:column;gap:6px}
+.odrow{display:flex;align-items:center;gap:10px;font-size:13px}
+.oddot{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+.oddot.s{background:var(--walk)} .oddot.e{background:var(--g5)}
+.odrow .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.odrow .t.empty{color:var(--faint);font-weight:400}
+.odline{margin-left:5px;width:1px;height:11px;background:var(--border2)}
+
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+.chip{padding:6px 12px;border:1px solid var(--border2);border-radius:999px;background:var(--surface);
+  font-size:12.5px;color:var(--text);transition:.15s}
+.chip:hover{border-color:var(--ride);color:var(--ride);background:var(--ride-soft)}
+.chip[aria-pressed="true"]{background:var(--ride);border-color:var(--ride);color:#fff;font-weight:600}
+.chip.ghost{border-style:dashed;color:var(--muted)}
+.chip.ghost:hover{color:var(--ride)}
+
+/* ── 生活型態星等 ───────────────────────────────────────── */
+.life{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.life>div:last-child:nth-child(odd){grid-column:1/-1}
+.lifeitem{border:1px solid var(--border);border-radius:var(--r2);padding:11px 12px;background:var(--sunken)}
+.lifeitem .lt{font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px}
+/* 星等：底層灰星 + 上層彩星以 width 裁切，可精確呈現半星且不依賴罕見字元 */
+.lifeitem .ls{position:relative;display:inline-block;margin-top:6px;font-size:14px;
+  letter-spacing:1.5px;color:var(--border2);white-space:nowrap}
+.lifeitem .ls i{position:absolute;left:0;top:0;width:0;overflow:hidden;white-space:nowrap;
+  color:#F59E0B;font-style:normal;transition:width .55s ease}
+.lifeitem .lr{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.5}
+
+/* ── 空狀態 / CTA / 警示 ────────────────────────────────── */
+.empty{padding:26px 16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.75}
+.empty .big{font-size:30px;display:block;margin-bottom:8px}
+.go{width:100%;margin-top:13px;padding:12px;border:0;border-radius:var(--r2);background:var(--walk);
+  color:#fff;font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;
+  box-shadow:0 1px 2px rgba(21,128,61,.3)}
+.go.ride{background:var(--ride);box-shadow:0 1px 2px rgba(37,99,235,.3)}
+.go:hover:not(:disabled){filter:brightness(.93)}
+.go:disabled{background:var(--border2);box-shadow:none;cursor:not-allowed}
+
+.warnbox{display:none;gap:9px;align-items:flex-start;padding:11px 13px;border-radius:var(--r2);
+  font-size:12.5px;background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;margin-top:11px}
+.warnbox.on{display:flex}
+
+/* ── Footer ─────────────────────────────────────────────── */
+.ft{max-width:1560px;margin:0 auto;padding:2px 20px 22px;font-size:11.5px;color:var(--faint);line-height:1.75}
+.ft b{color:var(--muted)}
+.ft .row{display:flex;gap:4px 18px;flex-wrap:wrap;margin-top:5px}
+
+/* ── compact：分析完成後縮小地圖、加寬右側資訊欄 ─────────── */
+@media (min-width:1181px){
+  .app.compact{grid-template-columns:minmax(0,1fr) 620px}
+  .app.compact #map{height:404px}
+  .app.compact .mapcard{position:sticky;top:100px}   /* 表頭 88px + 12px 間距 */
+  .app.compact .panel{max-height:none;overflow:visible}
+  .app.compact .life{grid-template-columns:repeat(3,1fr)}
+  .app.compact .life>div:last-child:nth-child(odd){grid-column:auto}
+}
+@media (max-width:1180px){
+  .app.compact #map{height:340px}
+}
+
+/* ── Responsive ─────────────────────────────────────────── */
+@media (max-width:1180px){
+  .app{grid-template-columns:1fr}
+  .panel{max-height:none;overflow:visible}
+  #map{height:420px;min-height:0}
+}
+@media (max-width:640px){
+  .hd{padding:10px 14px;gap:10px}
+  .app{padding:12px 14px;gap:12px}
+  .ft{padding:0 14px 18px}
+  .tabs{width:100%}
+  .tab{flex:1;justify-content:center;padding:9px 8px}
+  .hd .right{display:none}
+  .hint{white-space:normal;max-width:78%;font-size:13px}
+  #map{height:360px}
+  .mkey{position:static;flex-direction:row;flex-wrap:wrap;gap:5px 14px;padding:10px 13px;
+    border:0;border-top:1px solid var(--border);border-radius:0;background:var(--surface)}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<div class="demo" id="demoBar">
+  <span>🧪 <b>示範資料</b>：所有數字依你點選的座標即時產生，用來預覽版面，<b>不是真實分析結果</b>。</span>
+  <span>接後端請把 <code>API_BASE</code> 由 <code>null</code> 改成 <code>''</code>。</span>
+</div>
+
+<header class="hd">
+  <div class="brand">
+    <div class="mark" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    </div>
+    <div><h1>陸安安居指數</h1><span>交通安全分析</span></div>
+  </div>
+
+  <div class="tabs" role="tablist" aria-label="分析模式">
+    <button class="tab" role="tab" data-m="walk" aria-selected="true">
+      <span style="font-size:17px" aria-hidden="true">🚶</span>
+      <span>走路安全<small>300m / 500m 生活圈</small></span>
+    </button>
+    <button class="tab" role="tab" data-m="route" aria-selected="false">
+      <span style="font-size:17px" aria-hidden="true">🛵</span>
+      <span>路線安全<small>騎車／開車路線風險</small></span>
+    </button>
+  </div>
+
+  <div class="right">
+    <span>桃園市</span><span>·</span><span>近兩年 <b id="dataRange">—</b></span>
+  </div>
+</header>
+
+<div class="app">
+
+  <!-- ═══════════════ 地圖 ═══════════════ -->
+  <div class="mapcard">
+    <div id="map" role="application" aria-label="可點選的分析地圖"></div>
+
+    <div class="hint" id="hint">
+      <span style="font-size:17px" aria-hidden="true">👆</span>
+      <span id="hintText">點選地圖上任一位置<small>這裡會成為分析的中心點</small></span>
+    </div>
+
+    <div class="mtools">
+      <button type="button" id="bLocate">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>
+        目前位置
+      </button>
+      <button type="button" id="bSize" hidden>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6M20 10h-6V4"/><path d="m14 10 7-7M3 21l7-7"/></svg>
+        <span id="bSizeText">放大地圖</span>
+      </button>
+      <button type="button" id="bReset" disabled>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+        重設
+      </button>
+    </div>
+
+    <div class="mkey">
+      <b>圓圈數字＝路口事故件數</b>
+      <div><span class="kdot" style="background:#F59E0B"></span>1–14 件</div>
+      <div><span class="kdot" style="background:#EA580C"></span>15–29 件</div>
+      <div><span class="kdot" style="background:#DC2626"></span>30 件以上</div>
+      <b style="margin-top:3px">點圓圈可展開個別事故點</b>
+      <div><span class="kdot" style="background:#DC2626;width:11px;height:11px"></span>死亡</div>
+      <div><span class="kdot" style="background:#EA580C;width:9px;height:9px"></span>受傷</div>
+      <div><span class="kdot" style="background:#F59E0B;width:8px;height:8px"></span>無人傷亡</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ 面板 ═══════════════ -->
+  <div class="panel">
+
+    <!-- 路線設定（僅路線模式） -->
+    <section class="card tight" id="cardOD" hidden>
+      <div class="ctitle">🛵 路線設定</div>
+      <div class="od">
+        <div class="odrow"><span class="oddot s"></span>
+          <span class="t empty" id="odStart">請在地圖上點選起點</span></div>
+        <div class="odline"></div>
+        <div class="odrow"><span class="oddot e"></span>
+          <span class="t empty" id="odEnd">選下方常去地點，或再點地圖一次</span></div>
+      </div>
+      <div class="chips" id="chips"></div>
+    </section>
+
+    <!-- 空狀態 + CTA -->
+    <section class="card" id="cardEmpty">
+      <div class="empty" id="emptyText"></div>
+      <button class="go" id="bGo" type="button" disabled>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <span id="bGoText">請先在地圖上選點</span>
+      </button>
+      <div class="warnbox" id="warn"><span>⚠️</span><span id="warnText"></span></div>
+    </section>
+
+    <!-- 分數 + 百分位標尺 -->
+    <section class="card" id="cardScore" hidden>
+      <div class="ctitle"><span id="scTitle">走路安全</span>
+        <span class="rt" id="scRadius">300m + 500m 範圍</span></div>
+
+      <div class="score">
+        <div class="dial">
+          <svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true">
+            <circle cx="48" cy="48" r="40" fill="none" stroke="#EFF2F6" stroke-width="11"/>
+            <circle id="dialArc" cx="48" cy="48" r="40" fill="none" stroke="#CA8A04" stroke-width="11"
+                    stroke-linecap="round" stroke-dasharray="251.3" stroke-dashoffset="251.3"
+                    style="transition:stroke-dashoffset .7s ease,stroke .4s"/>
+          </svg>
+          <div class="val"><b id="scNum">—</b><s>／100 分</s></div>
+        </div>
+        <div class="side">
+          <span class="gradepill" id="scGrade">—</span>
+          <p class="plain" id="scPlain">—</p>
+          <span class="conf"><i id="scConfDot"></i><span id="scConf">—</span></span>
+        </div>
+      </div>
+
+      <div class="ruler">
+        <div class="rends" style="margin-bottom:-19px"><span>← 風險高</span><span>風險低 →</span></div>
+        <div class="rtrack">
+          <div class="rmed" style="left:50%"><span>桃園中位數</span></div>
+          <div class="ryou" id="rYou" style="left:0%" data-v="—"></div>
+        </div>
+        <div class="rends"><span>0</span><span>50</span><span>100</span></div>
+        <p style="font-size:11.5px;color:var(--muted);margin-top:9px" id="rulerNote"></p>
+      </div>
+    </section>
+
+    <!-- 適合誰 -->
+    <section class="card" id="cardLife" hidden>
+      <div class="ctitle"><span id="lifeTitle">適合哪種生活型態？</span>
+        <span class="rt">由事故資料推估，非官方評價</span></div>
+      <div class="life" id="life"></div>
+    </section>
+
+    <!-- 關鍵數字 + 趨勢 -->
+    <section class="card" id="cardNums" hidden>
+      <div class="ctitle">近兩年事故 <span class="rt" id="numScope">300m + 500m 圈內</span></div>
+      <div class="nums">
+        <div><div class="k" id="nk1">事故件數</div><div class="v" id="nv1">—</div></div>
+        <div><div class="k">死亡</div><div class="v" id="nv2">—</div></div>
+        <div><div class="k">受傷</div><div class="v" id="nv3">—</div></div>
+      </div>
+      <div class="sparkhd" id="sparkHd"></div>
+      <div class="spark" id="spark"></div>
+      <div class="sparkx" id="sparkx"></div>
+      <p class="trendnote" id="trendNote"></p>
+    </section>
+
+    <!-- 高風險路口 -->
+    <section class="card" id="cardX" hidden>
+      <div class="ctitle"><span id="xTitle">附近的高風險路口</span>
+        <span class="rt">點擊可定位</span></div>
+      <div class="xlist" id="xlist"></div>
+      <p style="font-size:11.5px;color:var(--faint);margin-top:11px" id="xNote"></p>
+    </section>
+
+  </div>
+</div>
+
+<footer class="ft">
+  <b>本指數為相對風險指標，非政府官方安全評等。</b>
+  分數越高代表相較於桃園市都市化程度相近的地區，歷史加權事故風險越低。歷史事故資料不預測未來，
+  亦不代表個人遭遇事故的機率；事故密度受交通量與路型設計影響，分數偏低不代表社區品質不佳。
+  本指數不構成不動產或路線選擇之專業建議。地圖上事故座標已做偏移以保護當事人隱私。
+  <div class="row">
+    <span>資料來源：政府資料開放平台《道路交通事故資料》A1、A2</span>
+    <span>授權：政府資料開放授權條款第 1 版</span>
+    <span>資料期間：<b id="ftRange">—</b></span>
+    <span><a href="#" id="lnkMethod">安全係數怎麼算？</a></span>
+  </div>
+</footer>
+
+<script>
+/* ==========================================================================
+   0. 設定
+   ========================================================================== */
+var API_BASE = '';            /* 同源後端（api.py）。示範資料產生器已移除 */
+
+var CFG = {
+  center: [24.9937, 121.3010],
+  zoom: 12,
+  /* 粗略市界，僅供前端即時提示；正式判定應由後端以行政區多邊形檢核 */
+  bbox: { south: 24.55, west: 120.96, north: 25.14, east: 121.49 },
+  walkRadii: [[300, '#16A34A', '300m'], [500, '#F59E0B', '500m']],
+  /* 常去地點（示範用近似座標） */
+  places: [
+    { n: '桃園車站',     ll: [24.9892, 121.3143] },
+    { n: '中壢車站',     ll: [24.9536, 121.2252] },
+    { n: '高鐵桃園站',   ll: [25.0130, 121.2149] },
+    { n: '台茂購物中心', ll: [25.0562, 121.2831] },
+    { n: '林口長庚醫院', ll: [25.0619, 121.3663] },
+    { n: '中原大學',     ll: [24.9573, 121.2413] }
+  ],
+  range: { from: '2024-07-01', to: '2026-06-30' }
+};
+
+var GRADE = [[80, '非常安全', 'var(--g1)'], [60, '相對安全', 'var(--g2)'],
+             [40, '中等風險', 'var(--g3)'], [20, '較高風險', 'var(--g4)'], [0, '高風險', 'var(--g5)']];
+function gradeOf(s) { for (var i = 0; i < GRADE.length; i++) if (s >= GRADE[i][0]) return GRADE[i]; return GRADE[4]; }
+function tierOf(n) { return n >= 30 ? 'hi' : n >= 15 ? 'md' : 'lo'; }
+function $(id) { return document.getElementById(id); }
+
+
+/* ==========================================================================
+   1. 地圖與互動
+   ========================================================================== */
+var LH = (function () {
+  'use strict';
+
+  var S = { mode: 'walk', origin: null, dest: null, destName: null,
+            inBounds: true, data: null, focus: -1, compact: false };
+  var map, gRings, gRoute, gMarks, gPts, mOrigin, mDest;
+
+  function init() {
+    if (typeof L === 'undefined') { fallback(); return; }
+    map = L.map('map', { center: CFG.center, zoom: CFG.zoom,
+                         zoomControl: false, scrollWheelZoom: false });
+    L.control.zoom({ position: 'bottomleft' }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19
+    }).addTo(map);
+    gRings = L.layerGroup().addTo(map);
+    gRoute = L.layerGroup().addTo(map);
+    gMarks = L.layerGroup().addTo(map);
+    gPts   = L.layerGroup().addTo(map);      /* 展開後的個別事故點 */
+    map.on('click', function (e) {
+      map.scrollWheelZoom.enable();
+      if (S.mode === 'walk' || !S.origin) setOrigin(e.latlng.lat, e.latlng.lng);
+      else setDest(e.latlng.lat, e.latlng.lng, '地圖選點');
+    });
+  }
+
+  function fallback() {
+    $('map').innerHTML = '<div style="height:100%;display:grid;place-items:center;text-align:center;' +
+      'color:#6B7280;font-size:13px;padding:24px"><div><div style="font-size:28px">🗺️</div>' +
+      '<b>地圖圖資載入失敗</b><br>本頁需連線載入 OpenStreetMap 圖磚。</div></div>';
+    $('hint').classList.add('off');
+    $('bLocate').disabled = true;
+  }
+
+  /* ---------- 起點 / 終點 ---------- */
+  function setOrigin(lat, lon) {
+    S.origin = [lat, lon];
+    S.inBounds = inBox(lat, lon);
+    S.data = null; S.focus = -1;
+    if (map) {
+      if (!mOrigin) {
+        mOrigin = L.marker(S.origin, { icon: pin('s', '📍'), draggable: true, zIndexOffset: 900 })
+          .addTo(map).bindTooltip('可拖曳微調', { direction: 'top', offset: [0, -20] });
+        mOrigin.on('dragend', function () { var p = mOrigin.getLatLng(); setOrigin(p.lat, p.lng); });
+      } else mOrigin.setLatLng(S.origin);
+      mOrigin.setIcon(pin('s', S.mode === 'walk' ? '📍' : '起'));
+      gRoute.clearLayers(); gMarks.clearLayers(); gPts.clearLayers();
+      if (S.mode === 'walk') { drawRings(); fit(); } else { gRings.clearLayers(); if (S.dest) fit(); }
+      $('map').classList.add('picked');
+    }
+    $('hint').classList.add('off');
+    $('bReset').disabled = false;
+    clearResults(); sync();
+  }
+
+  function setDest(lat, lon, name) {
+    S.dest = [lat, lon]; S.destName = name || '地圖選點';
+    S.data = null; S.focus = -1;
+    if (map) {
+      if (!mDest) {
+        mDest = L.marker(S.dest, { icon: pin('e', '終'), draggable: true, zIndexOffset: 900 }).addTo(map);
+        mDest.on('dragend', function () { var p = mDest.getLatLng(); setDest(p.lat, p.lng, '地圖選點'); });
+      } else mDest.setLatLng(S.dest);
+      gRoute.clearLayers(); gMarks.clearLayers(); gPts.clearLayers();
+      fit();
+    }
+    $('hint').classList.add('off');
+    clearResults(); sync();
+  }
+
+  function inBox(lat, lon) {
+    var b = CFG.bbox;
+    return lat >= b.south && lat <= b.north && lon >= b.west && lon <= b.east;
+  }
+
+  /* ---------- Marker / 圖層 ---------- */
+  function pin(kind, txt) {
+    return L.divIcon({ className: 'ptag ' + kind, html: '<i>' + txt + '</i>',
+                       iconSize: [30, 30], iconAnchor: [15, 15] });
+  }
+  function numIcon(n, on) {
+    var t = tierOf(n), sz = t === 'hi' ? 38 : t === 'md' ? 33 : 28;
+    return L.divIcon({ className: 'xn ' + t + (on ? ' on' : ''), html: '<i>' + n + '</i>',
+                       iconSize: [sz, sz], iconAnchor: [sz / 2, sz / 2] });
+  }
+
+  function drawRings() {
+    gRings.clearLayers();
+    if (!map || !S.origin) return;
+    CFG.walkRadii.forEach(function (r) {
+      L.circle(S.origin, { radius: r[0], color: r[1], weight: 1.6, dashArray: '7 5',
+                           fillColor: r[1], fillOpacity: .05, interactive: false }).addTo(gRings);
+      L.marker([S.origin[0] + r[0] / 111320, S.origin[1]], {
+        icon: L.divIcon({ className: 'xn', iconSize: null, iconAnchor: [0, 9],
+          html: '<span style="transform:translateX(-50%);display:inline-block;' +
+                'background:rgba(255,255,255,.94);border:1px solid ' + r[1] + ';color:' + r[1] +
+                ';border-radius:999px;padding:1px 8px;font-size:11px;font-weight:700;' +
+                'white-space:nowrap">' + r[2] + '</span>' }),
+        interactive: false, keyboard: false
+      }).addTo(gRings);
+    });
+  }
+
+  function fit() {
+    if (!map || !S.origin) return;
+    if (S.mode === 'route' && S.dest) map.fitBounds(L.latLngBounds([S.origin, S.dest]), { padding: [58, 58] });
+    else map.fitBounds(L.latLng(S.origin[0], S.origin[1]).toBounds(1500), { padding: [20, 20] });
+  }
+
+  /* ---------- 畫結果 ---------- */
+  function drawResult() {
+    gRoute.clearLayers(); gMarks.clearLayers(); gPts.clearLayers();
+    if (!S.data) return;
+    var d = S.data;
+
+    if (S.mode === 'route' && d.route) {
+      /* Google Maps 式畫法：白色襯底 + 藍色主線 */
+      L.polyline(d.route.path, { color: '#fff', weight: 10, opacity: .95, lineJoin: 'round' }).addTo(gRoute);
+      L.polyline(d.route.path, { color: '#2563EB', weight: 5.5, opacity: 1, lineJoin: 'round' }).addTo(gRoute);
+    }
+
+    (d.intersections || []).forEach(function (x, i) {
+      var on = (i === S.focus);
+      L.marker([x.lat, x.lon], { icon: numIcon(x.count, on), zIndexOffset: on ? 800 : 500 })
+        .bindTooltip('<b>' + x.name + '</b><br>近兩年 ' + x.count + ' 件事故<br>' +
+                     '<span style="color:#2563EB">' + (on ? '點我收合' : '點我展開個別事故點') + '</span>',
+                     { direction: 'top', offset: [0, -16] })
+        .on('click', function () { focusX(i); })
+        .addTo(gMarks);
+      if (on) drawPoints(x);
+    });
+  }
+
+  /* 展開：把該路口的件數散開成個別事故點 */
+  function drawPoints(x) {
+    var list = x.points || (x.points = loadPoints(x));
+    list.forEach(function (a) {
+      var fatal = a.fatalities > 0, hurt = a.injuries > 0;
+      L.circleMarker([a.lat, a.lon], {
+        className: 'apt',
+        radius: fatal ? 7 : hurt ? 5 : 4,
+        color: fatal ? '#7F1D1D' : '#fff',
+        weight: fatal ? 2.2 : 1.2,
+        fillColor: fatal ? '#DC2626' : hurt ? '#EA580C' : '#F59E0B',
+        fillOpacity: .92
+      }).bindPopup(pointPopup(a, x), { closeButton: true, maxWidth: 260 }).addTo(gPts);
+    });
+  }
+
+  /* 取個別事故點：後端接上後改打 API，示範模式由座標種子即時產生 */
+  function loadPoints(x) {
+    /* 後端已在 analyze 回應的每個路口帶 points 欄位。
+       若改為按需載入，可打 GET /api/v3/intersection?lat=&lon=&r=60，回傳同結構陣列。 */
+    return x.points || [];
+  }
+
+  function pointPopup(a, x) {
+    var fatal = a.fatalities > 0, hurt = a.injuries > 0;
+    var tag = fatal ? ['死亡', '#DC2626'] : hurt ? ['受傷', '#EA580C'] : ['無人傷亡', '#F59E0B'];
+    var rows = [['發生時間', a.occurred_at], ['事故類別', a.category],
+                ['涉入車種', a.parties],
+                ['死亡／受傷', a.fatalities + ' 人 / ' + a.injuries + ' 人'],
+                ['道路型態', a.road_type], ['主要肇因', a.main_cause]];
+    return '<div class="apop"><div class="ah">' + x.name +
+      '<span class="sev" style="background:' + tag[1] + '">' + tag[0] + '</span></div>' +
+      rows.filter(function (r) { return r[1]; }).map(function (r) {
+        return '<b>' + r[0] + '</b>　' + r[1];
+      }).join('<br>') +
+      '<div style="margin-top:5px;font-size:10.5px;color:#9CA3AF">' +
+      '座標已做 ±25m 偏移以保護當事人隱私</div></div>';
+  }
+
+  function focusX(i) {
+    if (!S.data || !S.data.intersections || !S.data.intersections[i]) return;
+    S.focus = (S.focus === i ? -1 : i);
+    drawResult(); UI.markFocus(S.focus);
+    if (S.focus >= 0 && map) {
+      var x = S.data.intersections[S.focus];
+      /* 縮到 z18：散布半徑 20~65m 才拉得開，不會全部疊在計數圓下面 */
+      map.setView([x.lat, x.lon], Math.max(map.getZoom(), 18), { animate: true });
+    }
+  }
+
+  /* ---------- 地圖大小（compact） ---------- */
+  function setCompact(on) {
+    S.compact = on;
+    document.querySelector('.app').classList.toggle('compact', on);
+    $('bSizeText').textContent = on ? '放大地圖' : '縮小地圖';
+    /* 容器尺寸改變後必須通知 Leaflet 重算，否則圖磚會缺塊 */
+    if (map) setTimeout(function () { map.invalidateSize(); }, 260);
+  }
+
+  /* ---------- 模式 / 重設 ---------- */
+  function setMode(m) {
+    S.mode = m; S.data = null; S.focus = -1;
+    if (map) {
+      gRings.clearLayers(); gRoute.clearLayers(); gMarks.clearLayers(); gPts.clearLayers();
+      if (m === 'walk' && mDest) { map.removeLayer(mDest); mDest = null; S.dest = null; S.destName = null; }
+      if (mOrigin) mOrigin.setIcon(pin('s', m === 'walk' ? '📍' : '起'));
+      if (m === 'walk' && S.origin) drawRings();
+    }
+    $('bSize').hidden = true; setCompact(false);
+    clearResults(); UI.mode(m); sync();
+    if (S.origin) fit();
+  }
+
+  function reset() {
+    S.origin = S.dest = S.destName = S.data = null;
+    S.focus = -1; S.inBounds = true;
+    if (map) {
+      if (mOrigin) { map.removeLayer(mOrigin); mOrigin = null; }
+      if (mDest) { map.removeLayer(mDest); mDest = null; }
+      gRings.clearLayers(); gRoute.clearLayers(); gMarks.clearLayers(); gPts.clearLayers();
+      map.setView(CFG.center, CFG.zoom);
+      $('map').classList.remove('picked');
+    }
+    $('hint').classList.remove('off');
+    $('bReset').disabled = true;
+    setCompact(false);
+    $('bSize').hidden = true;
+    clearResults(); UI.chips(null); sync();
+  }
+
+  function clearResults() {
+    ['cardScore', 'cardLife', 'cardNums', 'cardX'].forEach(function (id) { $(id).hidden = true; });
+    /* 內容也要清掉：只隱藏卡片的話，DOM 裡的舊項目仍可被點到 */
+    $('xlist').innerHTML = ''; $('life').innerHTML = '';
+    $('cardEmpty').hidden = false;
+    $('warn').classList.remove('on');
+  }
+
+  /* ---------- 分析 ---------- */
+  function ready() { return !!S.origin && S.inBounds && (S.mode === 'walk' || !!S.dest); }
+
+  function analyze() {
+    if (!ready()) return;
+    var payload = S.mode === 'walk'
+      ? { mode: 'walk', lat: S.origin[0], lon: S.origin[1] }
+      : { mode: 'route', from: S.origin, to: S.dest, vehicle: 'motorcycle' };
+
+    fetch(API_BASE + '/api/v3/analyze', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        /* 後端以 {error:{code,message}} 回報超出服務範圍、無可行路線等狀況，
+           交給 UI.error（它已備好各 code 的中文文案）*/
+        if (d && d.error) { UI.error(d); return; }
+        S.data = d; $('bSize').hidden = false; setCompact(true);
+        UI.render(d, S.mode); drawResult();
+      })
+      .catch(UI.error);
+  }
+
+  /* ---------- 同步文案與按鈕 ---------- */
+  function sync() {
+    var has = !!S.origin;
+    $('bGo').disabled = !ready();
+    $('bGo').classList.toggle('ride', S.mode === 'route');
+    $('bGoText').textContent =
+      !has ? '請先在地圖上選點'
+      : !S.inBounds ? '位置不在桃園市範圍'
+      : (S.mode === 'route' && !S.dest) ? '請選擇目的地'
+      : (S.mode === 'walk' ? '分析這裡的走路安全' : '分析這條路線');
+
+    if (has && !S.inBounds) {
+      $('warnText').innerHTML = '<b>選定位置不在桃園市範圍內。</b>本版本目前僅支援桃園市，請重新選點。';
+      $('warn').classList.add('on');
+    }
+
+    $('hintText').innerHTML = S.mode === 'walk'
+      ? '點選地圖上任一位置<small>這裡會成為分析的中心點</small>'
+      : (!S.origin ? '點選地圖選擇起點<small>接著挑一個常去地點當終點</small>'
+                   : '再點一次地圖選擇終點<small>或直接點右側常去地點</small>');
+
+    $('odStart').textContent = S.origin ? fmtLL(S.origin) : '請在地圖上點選起點';
+    $('odStart').classList.toggle('empty', !S.origin);
+    $('odEnd').textContent = S.dest ? S.destName + '（' + fmtLL(S.dest) + '）'
+                                    : '選下方常去地點，或再點地圖一次';
+    $('odEnd').classList.toggle('empty', !S.dest);
+
+    $('emptyText').innerHTML = S.mode === 'walk'
+      ? '<span class="big">🚶</span>在左側地圖上點一下，選擇你要分析的位置。<br>' +
+        '我們會用<b>近兩年</b>的交通事故資料，算出這裡走路的安全分數。'
+      : '<span class="big">🛵</span>選好<b>起點</b>與<b>終點</b>，我們會標出這條路線上<br>' +
+        '所有高風險路口，以及各路口近兩年的事故件數。';
+  }
+  function fmtLL(p) { return p[0].toFixed(5) + ', ' + p[1].toFixed(5); }
+
+  /* ---------- 綁定 ---------- */
+  function bind() {
+    document.querySelectorAll('.tab').forEach(function (t) {
+      t.addEventListener('click', function () {
+        document.querySelectorAll('.tab').forEach(function (x) { x.setAttribute('aria-selected', 'false'); });
+        t.setAttribute('aria-selected', 'true');
+        setMode(t.dataset.m);
+      });
+    });
+    $('bReset').addEventListener('click', reset);
+    $('bSize').addEventListener('click', function () { setCompact(!S.compact); });
+    $('bGo').addEventListener('click', analyze);
+    $('bLocate').addEventListener('click', function () {
+      if (!navigator.geolocation) { alert('此瀏覽器不支援定位'); return; }
+      var b = this; b.disabled = true;
+      navigator.geolocation.getCurrentPosition(
+        function (p) { b.disabled = false; setOrigin(p.coords.latitude, p.coords.longitude); },
+        function () { b.disabled = false; alert('無法取得目前位置，請改用地圖點選'); },
+        { enableHighAccuracy: true, timeout: 8000 });
+    });
+    $('lnkMethod').addEventListener('click', function (e) {
+      e.preventDefault();
+      alert('安全係數計算流程\n\n' +
+        '① 事故資料清洗與去重（一件事故有多位當事者，只算 1 件）\n' +
+        '② 分出行人／機車當事者（注意官方分類「人」含乘客，乘客不是行人）\n' +
+        '③ 距離平滑加權（越近權重越高，300m 與 301m 不會跳分）\n' +
+        '④ 嚴重度加權（死亡 30 : 受傷 3 : 涉入 1）\n' +
+        '⑤ 時間衰減（近期事故權重較高）\n' +
+        '⑥ 曝險標準化（除以路網長度，校正「人多 ≠ 危險」）\n' +
+        '⑦ 小樣本貝氏收縮（避免 0 件事故就拿 100 分）\n' +
+        '⑧ 與桃園市同都市化程度地區比較取百分位 → 0–100 分\n\n' +
+        '路線模式：以沿線 40m 內的路口事故當量 ÷ 路線長度，再與同長度路線比較。');
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    init(); bind(); UI.chips(null); UI.mode('walk'); sync();
+    $('dataRange').textContent = CFG.range.from.slice(0, 7).replace('-', '/') + '–' +
+                                 CFG.range.to.slice(0, 7).replace('-', '/');
+    $('ftRange').textContent = CFG.range.from + ' ～ ' + CFG.range.to;
+    $('demoBar').hidden = (API_BASE !== null);
+  });
+
+  return { state: function () { return S; }, setOrigin: setOrigin, setDest: setDest,
+           focusX: focusX, analyze: analyze, reset: reset, fit: fit };
+})();
+
+
+/* ==========================================================================
+   2. 面板渲染
+   ========================================================================== */
+var UI = (function () {
+  'use strict';
+
+  function mode(m) {
+    $('cardOD').hidden = (m !== 'route');
+    $('scTitle').textContent = m === 'walk' ? '走路安全' : '路線安全';
+    $('scRadius').textContent = m === 'walk' ? '300m + 500m 範圍' : '整條路線';
+    $('lifeTitle').textContent = m === 'walk' ? '適合哪種生活型態？' : '這條路線適合誰？';
+    $('xTitle').textContent = m === 'walk' ? '附近的高風險路口' : '路線上的高風險路口';
+    $('numScope').textContent = m === 'walk' ? '300m + 500m 圈內' : '沿線 40m 內';
+    $('nk1').textContent = m === 'walk' ? '事故件數' : '沿線事故';
+    if (m === 'route') chips(LH.state().destName);
+  }
+
+  function chips(active) {
+    var box = $('chips');
+    box.innerHTML = '';
+    CFG.places.forEach(function (p) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip'; b.textContent = p.n;
+      b.setAttribute('aria-pressed', active === p.n ? 'true' : 'false');
+      b.addEventListener('click', function () {
+        if (!LH.state().origin) {
+          $('warnText').innerHTML = '<b>請先在地圖上點選起點</b>，再選擇目的地。';
+          $('warn').classList.add('on');
+          return;
+        }
+        LH.setDest(p.ll[0], p.ll[1], p.n); chips(p.n);
+      });
+      box.appendChild(b);
+    });
+    var g = document.createElement('button');
+    g.type = 'button'; g.className = 'chip ghost'; g.textContent = '＋ 點地圖選終點';
+    g.addEventListener('click', function () {
+      $('hint').classList.remove('off');
+      $('hintText').innerHTML = '點選地圖選擇終點<small>起點已設定</small>';
+    });
+    box.appendChild(g);
+  }
+
+  /* ── 主渲染 ── */
+  function render(d, m) {
+    $('cardEmpty').hidden = true;
+    ['cardScore', 'cardLife', 'cardNums', 'cardX'].forEach(function (id) { $(id).hidden = false; });
+    $('demoBar').hidden = !d.demo;
+    /* 路線模式把長度與時間放到分數卡標題右側，避免與白話說明重複 */
+    if (m === 'route' && d.route)
+      $('scRadius').textContent = d.route.km + ' km ‧ 約 ' + d.route.min + ' 分';
+
+    var sc = d.score, g = gradeOf(sc.value), C = 2 * Math.PI * 40;
+
+    /* 分數環 */
+    $('dialArc').style.strokeDashoffset = C * (1 - sc.value / 100);
+    $('dialArc').style.stroke = g[2];
+    $('scNum').textContent = sc.value;
+    $('scNum').style.color = g[2];
+    $('scGrade').textContent = g[1];
+    $('scGrade').style.color = g[2];
+    $('scPlain').innerHTML = sc.plain;
+
+    var cf = { high: ['var(--g1)', '資料充足'], mid: ['var(--g3)', '資料尚可'],
+               low: ['var(--g5)', '資料偏少，僅供參考'] }[sc.confidence] || ['var(--faint)', '—'];
+    $('scConfDot').style.background = cf[0];
+    $('scConf').textContent = cf[1] + '・' + sc.confidence_reason;
+
+    /* 百分位標尺 */
+    var you = $('rYou');
+    you.style.left = sc.value + '%';
+    you.setAttribute('data-v', sc.value + ' 分');
+    you.style.borderColor = g[2];
+    $('rulerNote').innerHTML = m === 'walk'
+      ? '分數是<b>相對位置</b>：與桃園市都市化程度相近的地區比較，不是絕對安全評等。'
+      : '分數是<b>相對位置</b>：與桃園市同長度、同類型的路線比較，不是絕對安全評等。';
+
+    /* 關鍵數字 */
+    $('nv1').innerHTML = d.stats.accidents + '<s>件</s>';
+    $('nv2').innerHTML = d.stats.fatalities + '<s>人</s>';
+    $('nv3').innerHTML = d.stats.injuries + '<s>人</s>';
+    $('nv2').style.color = d.stats.fatalities > 0 ? 'var(--g5)' : 'var(--text)';
+
+    /* 月趨勢：24 根，每月一根 */
+    renderTrend(d.trend);
+
+    renderLife(d.lifestyle);
+    renderX(d.intersections, m);
+  }
+
+  /* 核心視覺化③：月趨勢條
+     trend = [{ ym:'2024-07', n:5, partial:false }, ...]  近兩年共 24 筆
+     ‧ 資料未齊的月份（partial）淡化顯示，且不納入平均與前後半年比較，
+       否則最後一根會假性下降，看起來像「變安全了」
+     ‧ 最近 6 個月上色（少 = 綠、多 = 紅），與下方文字說明對應 */
+  function renderTrend(trend) {
+    var all = (trend || []).slice();
+    if (!all.length) {
+      $('sparkHd').innerHTML = ''; $('spark').innerHTML = '';
+      $('sparkx').innerHTML = ''; $('trendNote').textContent = ''; return;
+    }
+
+    var solid = all.filter(function (x) { return !x.partial; });
+    var n = all.length, N = solid.length;
+    var max = Math.max.apply(null, all.map(function (x) { return x.n; })) || 1;
+    var avg = solid.reduce(function (s, x) { return s + x.n; }, 0) / (N || 1);
+
+    /* 前後半年比較：從「資料完整的最後一個月」往回數，各取 6 個月。
+       不用單月比較 —— 這個月 2 件下個月 5 件就是「+150%」，那是雜訊不是趨勢 */
+    var half = Math.min(6, Math.floor(N / 2)), last = 0, prev = 0;
+    for (var i = 0; i < half; i++) {
+      last += solid[N - 1 - i].n;
+      prev += solid[N - 1 - half - i].n;
+    }
+    /* 最近半年的長條染上趨勢色，與下方文字說明對應；藍線維持單色不跟著變 */
+    var tint = last > prev ? '#FECACA' : last < prev ? '#BBF7D0' : '#E2E8F0';
+    var firstRecent = half ? all.indexOf(solid[N - half]) : n;
+
+    $('sparkHd').innerHTML = '每月事故件數<em>3 個月平均</em><b>月均 ' + avg.toFixed(1) + ' 件</b>';
+
+    /* 3 個月移動平均（置中）。碰到資料未齊的月份就斷開，不要讓半個月的值把線拉下來 */
+    var pts = [];
+    all.forEach(function (x, i) {
+      if (i === 0 || i === n - 1 || x.partial || all[i - 1].partial || all[i + 1].partial) return;
+      pts.push((i + 0.5) + ',' + (max - (all[i - 1].n + x.n + all[i + 1].n) / 3).toFixed(3));
+    });
+
+    $('spark').innerHTML =
+      all.map(function (x, i) {
+        var y = +x.ym.slice(0, 4), mo = +x.ym.slice(5, 7);
+        return '<i title="' + y + ' 年 ' + mo + ' 月 · ' + x.n + ' 件' +
+               (x.partial ? '（資料未齊）' : '') + '" style="height:' +
+               Math.max(3, x.n / max * 100).toFixed(1) + '%;background:' +
+               (!x.partial && i >= firstRecent ? tint : '#E2E8F0') +
+               (x.partial ? ';opacity:.5' : '') + '"></i>';
+      }).join('') +
+      (pts.length > 1
+        ? '<svg viewBox="0 0 ' + n + ' ' + max + '" preserveAspectRatio="none">' +
+          '<polyline points="' + pts.join(' ') + '" fill="none" stroke="#2563EB" stroke-width="2.5" ' +
+          'vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/></svg>'
+        : '');
+
+    /* X 軸只標頭尾與每年一月：24 個標籤擠不下，也沒人要逐月看 */
+    $('sparkx').innerHTML = all.map(function (x, i) {
+      var y = +x.ym.slice(0, 4), mo = +x.ym.slice(5, 7);
+      var txt = (i === 0 || i === n - 1) ? y + '/' + mo : (mo === 1 ? String(y) : '');
+      return '<span' + (i === 0 ? ' class="s0"' : i === n - 1 ? ' class="sL"' : '') + '>' + txt + '</span>';
+    }).join('');
+
+    var dp = prev ? Math.round((last / prev - 1) * 100) : 0;
+    $('trendNote').innerHTML = (dp === 0
+      ? '最近 ' + half + ' 個月與前 ' + half + ' 個月 <b>持平</b>'
+      : '最近 ' + half + ' 個月較前 ' + half + ' 個月 <b class="' +
+        (dp > 0 ? 'up">↑ ' : 'down">↓ ') + Math.abs(dp) + '%</b>') +
+      ' <span style="color:var(--faint)">（' + prev + ' → ' + last + ' 件）</span>';
+  }
+
+  /* 生活型態星等：底層 5 顆灰星 + 上層彩星以 width 裁切，半星才會精準 */
+  function renderLife(list) {
+    var box = $('life');
+    box.innerHTML = '';
+    (list || []).forEach(function (l) {
+      var n = Math.max(0, Math.min(5, Number(l.stars) || 0));
+      var el = document.createElement('div');
+      el.className = 'lifeitem';
+      el.innerHTML =
+        '<div class="lt">' + l.label + '</div>' +
+        '<div class="ls" role="img" aria-label="5 顆星中的 ' + n + ' 顆">' +
+          '★★★★★<i style="width:' + (n / 5 * 100) + '%">★★★★★</i></div>' +
+        '<div class="lr">' + l.reason + '</div>';
+      box.appendChild(el);
+    });
+  }
+
+  function renderX(list, m) {
+    var box = $('xlist');
+    box.innerHTML = '';
+    if (!list || !list.length) {
+      box.innerHTML = '<div class="empty" style="padding:16px">' +
+        (m === 'walk' ? '附近沒有明顯的事故集中路口' : '這條路線上沒有明顯的高風險路口') + '</div>';
+      $('xNote').textContent = '';
+      return;
+    }
+    list.slice(0, 5).forEach(function (x, i) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'xitem'; b.dataset.i = i;
+      var open = (LH.state().focus === i);
+      b.innerHTML =
+        '<span class="xbadge ' + tierOf(x.count) + '">' + x.count + '</span>' +
+        '<span class="xbody"><span class="xname">' + x.name + '</span>' +
+        '<span class="xmeta">' + x.detail + '</span>' +
+        '<span class="xopen">' + (open ? '▾ 收合事故點' : '▸ 展開 ' + x.count + ' 個事故點') + '</span></span>' +
+        '<span class="xrank"><b class="' + x.rank.tone + '">' + x.rank.text + '</b><s>同級路口</s></span>';
+      b.addEventListener('click', function () { LH.focusX(i); });
+      box.appendChild(b);
+    });
+    $('xNote').innerHTML = '圓圈與徽章上的數字＝該路口<b>近兩年事故件數</b>。' +
+      '點任一列或地圖上的圓圈，可<b>展開該路口的個別事故點</b>並查看逐件明細；' +
+      '「同級路口」是與桃園市相同道路等級路口比較後的排序。';
+  }
+
+  function markFocus(i) {
+    document.querySelectorAll('.xitem').forEach(function (el) {
+      var k = +el.dataset.i, on = (k === i);
+      el.classList.toggle('on', on);
+      var tip = el.querySelector('.xopen');
+      if (tip) tip.textContent = on ? '▾ 收合事故點'
+                                    : '▸ 展開 ' + el.querySelector('.xbadge').textContent + ' 個事故點';
+    });
+  }
+
+  function error(err) {
+    var codes = { OUT_OF_COVERAGE: '本版本目前僅支援桃園市範圍。',
+                  INSUFFICIENT_DATA: '目前資料不足，無法可靠評估。',
+                  NO_ROUTE: '找不到可行路線，請換一個目的地。',
+                  DATA_UNAVAILABLE: '資料載入失敗，請稍後再試。' };
+    var msg = (err && err.error && (codes[err.error.code] || err.error.message)) ||
+              (err && err.message) || '發生未知錯誤';
+    console.error('[陸安]', msg);
+    $('warnText').innerHTML = '<b>' + msg + '</b>';
+    $('warn').classList.add('on');
+  }
+
+  return { mode: mode, chips: chips, render: render, markFocus: markFocus, error: error };
+})();
+
+
+/* 示範資料產生器已移除（原第 3 段）。所有數字由後端 api.py 以真實事故資料計算。
+   備份： scratchpad/index.demo-backup.html */
+</script>
+</body>
+</html>
