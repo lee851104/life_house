@@ -1,0 +1,21 @@
+# ---- 大檔／可重新產生的資料，不進版控 ----
+
+# 原始下載檔（ZIP/CSV，約 103 MB）  →  python 下載資料.py
+raw/
+
+# A2 分月明細（32 檔，約 1.4 GB，單檔 40–55 MB）  →  python 下載資料.py
+data/A2/
+
+# 縣市 A2 篩選結果（桃園市約 156 MB，超過 GitHub 單檔 100 MB 上限）
+#   →  python 篩選縣市.py 桃園市
+縣市/*_A2_*.csv
+
+# 由 合併A2.py 產生的年度合併檔
+A2_*_合併.csv
+
+# 與 data/A1/A1_2026.csv 內容完全相同的原始範例檔
+NPA_TMA1.csv
+
+# ---- Python ----
+__pycache__/
+*.pyc
