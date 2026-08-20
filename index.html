@@ -768,7 +768,15 @@ var LH = (function () {
 
     fetch(API_BASE + '/api/v3/analyze', { method: 'POST',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        /* 非 2xx 的回應也可能不是 JSON（例如 500 的純文字），直接 r.json()
+           會丟出 SyntaxError，使用者就看到一句英文的解析錯誤 */
+        return r.text().then(function (t) {
+          try { return JSON.parse(t); }
+          catch (e) { return { error: { code: 'DATA_UNAVAILABLE',
+                                        message: '伺服器回應異常（HTTP ' + r.status + '）' } }; }
+        });
+      })
       .then(function (d) {
         /* 後端以 {error:{code,message}} 回報超出服務範圍、無可行路線等狀況，
            交給 UI.error（它已備好各 code 的中文文案）*/
@@ -838,22 +846,35 @@ var LH = (function () {
       e.preventDefault();
       alert('安全係數計算流程\n\n' +
         '① 事故資料清洗與去重（一件事故有多位當事者，只算 1 件）\n' +
-        '② 分出行人／機車當事者（注意官方分類「人」含乘客，乘客不是行人）\n' +
-        '③ 距離平滑加權（越近權重越高，300m 與 301m 不會跳分）\n' +
-        '④ 嚴重度加權（死亡 30 : 受傷 3 : 涉入 1）\n' +
-        '⑤ 時間衰減（近期事故權重較高）\n' +
-        '⑥ 曝險標準化（除以路網長度，校正「人多 ≠ 危險」）\n' +
-        '⑦ 小樣本貝氏收縮（避免 0 件事故就拿 100 分）\n' +
-        '⑧ 與桃園市同都市化程度地區比較取百分位 → 0–100 分\n\n' +
-        '路線模式：以沿線 40m 內的路口事故當量 ÷ 路線長度，再與同長度路線比較。');
+        '② 排除國道、快速道路、高架與隧道（行人與普通機車到不了）\n' +
+        '③ 距離平滑加權（Epanechnikov 核，300m 與 301m 不會跳分）\n' +
+        '④ 嚴重度加權（一件死亡事故 = 21，其餘一律 = 1）\n' +
+        '⑤ 曝險標準化（分子分母用同一個核加權，校正「人多 ≠ 危險」）\n' +
+        '⑥ 小樣本收縮（證據量用路網長度，避免小圈就給極端分數）\n' +
+        '⑦ 依曝險分 8 層，與同層地區比較取百分位 → 1–99 分\n\n' +
+        '路線模式：以沿線 40m 內的事故當量 ÷ 路線長度，' +
+        '再與沿線路網密度相近的路線比較。\n\n' +
+        '註：目前沒有時間衰減，期間內每一件事故權重相同。');
     });
+  }
+
+  function showRange(r) {
+    $('dataRange').textContent = r.from.slice(0, 7).replace('-', '/') + '–' +
+                                 r.to.slice(0, 7).replace('-', '/');
+    $('ftRange').textContent = r.from + ' ～ ' + r.to;
   }
 
   document.addEventListener('DOMContentLoaded', function () {
     init(); bind(); UI.chips(null); UI.mode('walk'); sync();
-    $('dataRange').textContent = CFG.range.from.slice(0, 7).replace('-', '/') + '–' +
-                                 CFG.range.to.slice(0, 7).replace('-', '/');
-    $('ftRange').textContent = CFG.range.from + ' ～ ' + CFG.range.to;
+    /* CFG.range 只是後端還沒回來之前的預設值。真正的期間以 /api/v3/meta 為準，
+       否則重建索引換了資料期間，畫面會靜靜地繼續顯示寫死的舊日期。 */
+    showRange(CFG.range);
+    if (API_BASE !== null) {
+      fetch(API_BASE + '/api/v3/meta')
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (m) { if (m && m.range) { CFG.range = m.range; showRange(m.range); } })
+        .catch(function () { /* 保留寫死的預設值 */ });
+    }
     $('demoBar').hidden = (API_BASE !== null);
   });
 
@@ -1054,7 +1075,8 @@ var UI = (function () {
         '<span class="xbody"><span class="xname">' + x.name + '</span>' +
         '<span class="xmeta">' + x.detail + '</span>' +
         '<span class="xopen">' + (open ? '▾ 收合事故點' : '▸ 展開 ' + x.count + ' 個事故點') + '</span></span>' +
-        '<span class="xrank"><b class="' + x.rank.tone + '">' + x.rank.text + '</b><s>同級路口</s></span>';
+        '<span class="xrank"><b class="' + x.rank.tone + '">' + x.rank.text + '</b><s>' +
+          (x.rank.basis || '同級路口') + '</s></span>';
       b.addEventListener('click', function () { LH.focusX(i); });
       box.appendChild(b);
     });
@@ -1074,11 +1096,14 @@ var UI = (function () {
   }
 
   function error(err) {
+    /* 後端沒給訊息時才用的預設文案。後端的 message 比較具體
+       （「起點附近 2382 公尺內沒有可通行的道路」vs「僅支援桃園市範圍」），
+       所以它優先——反過來的話，這張表會把具體理由整個蓋掉。 */
     var codes = { OUT_OF_COVERAGE: '本版本目前僅支援桃園市範圍。',
                   INSUFFICIENT_DATA: '目前資料不足，無法可靠評估。',
                   NO_ROUTE: '找不到可行路線，請換一個目的地。',
                   DATA_UNAVAILABLE: '資料載入失敗，請稍後再試。' };
-    var msg = (err && err.error && (codes[err.error.code] || err.error.message)) ||
+    var msg = (err && err.error && (err.error.message || codes[err.error.code])) ||
               (err && err.message) || '發生未知錯誤';
     console.error('[陸安]', msg);
     $('warnText').innerHTML = '<b>' + msg + '</b>';

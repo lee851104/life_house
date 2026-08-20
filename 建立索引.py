@@ -41,6 +41,15 @@ JITTER = 25.0      # 個別事故點的隱私偏移上限（公尺）
 MOTORWAY_CLS = {"國道", "快速(公)道"}
 MOTORWAY_TYPE = {"高架道路", "隧道"}
 
+
+def is_motorway(m):
+    """單筆事故是不是發生在行人／機車到不了的路段。
+
+    事故與路口一律共用這一支，兩邊的判準才不會分岔。
+    """
+    return m["cls"] in MOTORWAY_CLS or m["rtype"] in MOTORWAY_TYPE
+
+
 csv.field_size_limit(10 ** 7)
 YEAR = re.compile(r"^\d{4}$")
 
@@ -240,7 +249,12 @@ def main():
         cy = sum(m["y"] for m in ms) / len(ms)
         clon, clat = inv(cx, cy)
         cls_mode = Counter(m["cls"] for m in ms).most_common(1)[0][0]
-        xmw = 1 if cls_mode in MOTORWAY_CLS else 0
+        # 路口的旗標必須跟事故的旗標用同一個判準，而且是「全部成員都是國道／
+        # 高架」才算國道路口。舊版只看眾數道路類別、也不認 MOTORWAY_TYPE，
+        # 結果兩套判準對 142 個路口的結論不一樣：99 個地面路口的 count 混進
+        # 國道事故（popup 標題與事故點清單對不上），另外 43 個明明有地面事故
+        # 的路口被眾數判成國道而整個消失。
+        xmw = 1 if all(is_motorway(m) for m in ms) else 0
         xrows.append((xid, clat, clon, cx, cy, len(ms),
                       sum(m["dead"] for m in ms), sum(m["hurt"] for m in ms),
                       name_cluster([m["loc"] for m in ms]), cls_mode, xmw))
@@ -248,7 +262,7 @@ def main():
         for m in ms:
             jlat, jlon = jitter(m)
             aid = len(arows)
-            mw = 1 if (m["cls"] in MOTORWAY_CLS or m["rtype"] in MOTORWAY_TYPE) else 0
+            mw = 1 if is_motorway(m) else 0
             arows.append((aid, xid, m["ymd"], m["hms"], int(m["hms"][:2] or 0),
                           "%s-%s" % (m["ymd"][:4], m["ymd"][4:6]), m["cat"],
                           m["lat"], m["lon"], jlat, jlon, m["dead"], m["hurt"],

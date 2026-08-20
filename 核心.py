@@ -42,6 +42,17 @@ MONTHS = 24
 STRATA = 8          # 曝險分層數。5 層時最高層橫跨 5–22 km，市郊與市中心被
                     # 混在一起比，「同類地區」名不符實。
 
+# Dijkstra 搜尋上限（公尺）。桃園東西寬約 50 km，山路繞行後最長的市內路線
+# 實測 63.5 km（南崁→巴陵），舊值 25 km 會把它判成「找不到可行路線」。
+# 放寬幾乎不花錢：25 km→100 km 的單次查詢是 0.045s→0.063s。留一個上限只是
+# 當作失控保險。
+ROUTE_LIMIT = 100000.0
+# 起訖點離最近機車路網節點的上限（公尺）。山區有大片沒有 OSM 道路的區域，
+# 不設上限的話使用者在復興區點兩個相距 2 km 的點，會被吸到 2–3 km 外的
+# 公路上，回傳一條跟兩支圖釘完全對不上的路線——而且畫在地圖上像真的。
+# 400 m 是距離分布的斷層：市界內隨機點 p75=172 m、p90=1082 m。
+SNAP_MAX = 400.0
+
 # 收縮的「虛擬觀測量」，單位 km。
 #   adj = (事故加權 + K0 × 同層中位風險) / (路網km + K0)
 # 用路網長度而不是事故件數當證據量：件數當權重時，risk=0 也會被硬拉離 0
@@ -104,21 +115,48 @@ class Data:
         lut = {s: i for i, s in enumerate(self.ym_labels)}
         self.a_mi = np.array([lut.get(r[7], -1) for r in rows], dtype=np.int8)
 
+        # xid 就是 intersections 的 rowid（INTEGER PRIMARY KEY），上面那句
+        # 全表掃描保證回傳順序 == xid。這裡明確存下來，之後才有辦法驗；
+        # 只靠「列序剛好等於 xid」的隱性假設，哪天加個 ORDER BY 或讓查詢走到
+        # i_x_mw 索引（實測順序就變了），所有 popup 的事故點會靜靜地張冠李戴。
+        self.x_id = np.array([r[0] for r in xrows], dtype=np.int64)
+        if not np.array_equal(self.x_id, np.arange(len(xrows))):
+            raise RuntimeError("intersections 的回傳順序與 xid 不一致，索引會錯位")
+
         self.x_xy = np.array([[r[3], r[4]] for r in xrows])
-        self.x_cnt = np.array([r[5] for r in xrows], dtype=np.int32)
         self.x_fat = np.array([r[6] for r in xrows], dtype=np.int32)
         self.x_mw = np.array([r[10] for r in xrows], dtype=bool)
         self.x_info = [(r[1], r[2], r[8], r[9]) for r in xrows]   # lat, lon, name, cls
         self.x_cls = np.array([r[9] for r in xrows], dtype=object)
-        # 「前 N%」的比較基準。前端文案寫「與相同道路等級路口比較」，所以按
-        # 道路類別分開排序；國道匝道不列入。
-        self.x_cnt_sorted = np.sort(self.x_cnt[~self.x_mw])
-        self.x_cnt_by_cls = {}
-        for c in set(self.x_cls[~self.x_mw]):
-            self.x_cnt_by_cls[c] = np.sort(self.x_cnt[(~self.x_mw) & (self.x_cls == c)])
 
         # 地面事故（行人與機車都到得了的）才進風險計算
         self.ground = ~self.a_mw
+
+        # 路口的顯示件數一律由「地面事故」現算，不用 DB 的 count 欄位。
+        #
+        # 建立索引.py 給路口的 motorway 旗標只看群集的眾數道路類別，給事故的
+        # 卻是逐筆判斷、還多認高架與隧道。兩套判準不一致，於是：
+        #   ‧ 99 個地面路口的 count 含了國道／高架事故，popup 標題寫「展開
+        #     10 個事故點」卻只列得出 8 個；
+        #   ‧ 43 個路口因為眾數被判成國道而整個從清單消失，裡面卻有 87 筆
+        #     實實在在的地面事故（那些事故本來就有進風險分數，只是路口看不到）。
+        # 以「這個路口有幾件地面事故」當唯一定義，件數、事故點清單、風險分子
+        # 三者就永遠對得上，也不必為此重建 事故索引.db。
+        self.x_cnt = np.bincount(self.a_xid[self.ground],
+                                 minlength=len(xrows)).astype(np.int32)
+
+        # 只把有地面事故的路口拿來顯示與排名。純國道匝道群集的地面件數是 0，
+        # 會自動被這個條件擋掉，不需要再靠那個不可靠的眾數旗標。
+        self.x_keep = np.flatnonzero(self.x_cnt > 0)
+
+        # 「前 N%」的比較基準。前端文案寫「與相同道路等級路口比較」，所以按
+        # 道路類別分開排序。
+        self.x_cnt_sorted = np.sort(self.x_cnt[self.x_keep])
+        self.x_cnt_by_cls = {}
+        keep_cls = self.x_cls[self.x_keep]
+        for c in set(keep_cls):
+            self.x_cnt_by_cls[c] = np.sort(self.x_cnt[self.x_keep[keep_cls == c]])
+
         self.g_ix = np.flatnonzero(self.ground)      # → 回查 a_txt 用
         self.g_xy = self.a_xy[self.ground]
         self.g_sev = self.a_sev[self.ground]
@@ -131,8 +169,6 @@ class Data:
         self.g_jlon = self.a_jlon[self.ground]
         self.acc_tree = cKDTree(self.g_xy)
 
-        # 只把地面路口拿來顯示與排名
-        self.x_keep = np.flatnonzero(~self.x_mw)
         self.x_tree = cKDTree(self.x_xy[self.x_keep])
 
         # ---- 路網 ----
@@ -246,7 +282,18 @@ class Data:
             if idx else 0.0
 
     # -------------------------------------------------------------- 路徑
-    def shortest_path(self, a, b, limit=25000.0):
+    def snap(self, p, limit=SNAP_MAX):
+        """把一個座標吸到最近的機車路網節點。
+
+        回傳 (節點編號, 距離公尺)；超過 limit 時節點編號給 -1，讓呼叫端能分辨
+        「這裡根本沒有路」和「有路但走不到」——這兩件事對使用者是完全不同的
+        訊息，全都回「找不到可行路線」等於把系統限制講成使用者選錯地方。
+        """
+        d, i = self.node_tree.query([p])
+        d, i = float(d[0]), int(i[0])
+        return (i if limit is None or d <= limit else -1), d
+
+    def shortest_path(self, a, b, limit=ROUTE_LIMIT):
         """機車路網最短路徑。回傳 (節點序列, 長度公尺)，走不通回傳 None。
 
         基準與查詢一定要共用這支：基準若改用隨機遊走取樣，走出來的是巷弄，
@@ -316,8 +363,13 @@ class Data:
         補一位小數才分得出高下。
         """
         arr = self.x_cnt_by_cls.get(cls) if cls else None
-        if arr is None or len(arr) < 200:        # 樣本太少就退回全市
+        # 樣本太少就退回全市。省道只有 97 個路口、專用道路 17 個，拿它們自己
+        # 當分母做百分位沒有意義。但這時候比較基準已經不是「同級」了，要一起
+        # 回報給前端改標籤——否則畫面會宣稱一個它其實沒做的比較。
+        basis = "同級路口"
+        if arr is None or len(arr) < 200:
             arr = self.x_cnt_sorted
+            basis = "全市路口"
         above = len(arr) - int(np.searchsorted(arr, count, side="left"))
         pct = 100.0 * above / len(arr)
         if pct < 10:
@@ -325,10 +377,10 @@ class Data:
         else:
             text = "前 %d%%" % int(round(pct))
         if pct <= 35:
-            return {"text": text, "tone": "bad"}
+            return {"text": text, "tone": "bad", "basis": basis}
         if pct <= 62:
-            return {"text": "約中段", "tone": "mid"}
-        return {"text": "偏少", "tone": "ok"}
+            return {"text": "約中段", "tone": "mid", "basis": basis}
+        return {"text": "偏少", "tone": "ok", "basis": basis}
 
 
 # ------------------------------------------------------------------ 取樣

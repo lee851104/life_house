@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 
 import numpy as np
 from fastapi import FastAPI, Query
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
@@ -61,14 +62,33 @@ async def lifespan(_app):
 app = FastAPI(title="陸安安居指數 API", version="3.0", lifespan=lifespan)
 
 
+@app.exception_handler(RequestValidationError)
+async def on_invalid(_req, exc):
+    """pydantic 的 422 也要用前端認得的 {error:{code,message}} 形狀。
+
+    FastAPI 預設回 {"detail":[…]}，前端的 `if (d && d.error)` 攔不到，會直接
+    把它當成分析結果丟進 UI.render()，然後在 d.score 上炸 TypeError。
+    """
+    loc = ".".join(str(x) for x in exc.errors()[0].get("loc", [])[1:])
+    # 訊息會直接顯示給使用者（前端以 error.message 為優先），不要把 pydantic
+    # 的英文原文倒出去。
+    return fail("DATA_UNAVAILABLE",
+                "請求參數不正確%s，請重新選點。" % ("（%s）" % loc if loc else ""), 422)
+
+
 # ------------------------------------------------------------------ 請求
 class Analyze(BaseModel):
     mode: str = Field(pattern="^(walk|route)$")
     lat: float | None = None
     lon: float | None = None
-    from_: list[float] | None = Field(None, alias="from")
-    to: list[float] | None = None
-    vehicle: str = "motorcycle"
+    # min/max_length 是必要的：少了它，from=[24.99] 會在 D.inside(p[0], p[1])
+    # 炸出 IndexError → HTTP 500 純文字，前端 r.json() 解析失敗後只能顯示一句
+    # 英文的 SyntaxError。
+    from_: list[float] | None = Field(None, alias="from", min_length=2, max_length=2)
+    to: list[float] | None = Field(None, min_length=2, max_length=2)
+    # 只有機車路網（建立路網.py 的 ride_*），沒有第二種可選。收下卻忽略的話，
+    # vehicle='bicycle' 會靜靜地拿到機車的結果。
+    vehicle: str = Field("motorcycle", pattern="^motorcycle$")
 
     model_config = {"populate_by_name": True}
 
@@ -174,7 +194,10 @@ def analyze_walk(lat, lon):
         d = float(np.hypot(D.x_xy[D.x_keep[k], 0] - x, D.x_xy[D.x_keep[k], 1] - y))
         rows.append((k, d))
     rows.sort(key=lambda r: -D.x_cnt[D.x_keep[r[0]]])
-    hot = [r for r in rows if r[1] <= NEAR_HOT and D.x_cnt[D.x_keep[r[0]]] >= HI_COUNT]
+    # 距離門檻要跟 pack_x 顯示的值用同一個四捨五入，否則 300.44 m 的路口
+    # popup 寫「距離 300 m」，摘要卻不把它算進「300 公尺內的熱點」。
+    hot = [r for r in rows
+           if round(r[1]) <= NEAR_HOT and D.x_cnt[D.x_keep[r[0]]] >= HI_COUNT]
     xs = pack_x(rows[:SHOW_X])
 
     plain = "這裡走路，比桃園同類地區 <b>%d%%</b> 的地方安全。" % score
@@ -216,6 +239,26 @@ def analyze_walk(lat, lon):
 def route_path(a, b):
     """機車路網上的最短路徑。與 建立基準.py 共用 core.shortest_path。"""
     return D.shortest_path(a, b)
+
+
+def route_error(frm, to):
+    """路線走不通時，判斷是哪一種走不通。回傳 (code, message) 或 None。
+
+    三種情況對使用者的意義完全不同，全都回「找不到可行路線，請換一個目的地」
+    只會讓人一直換目的地卻不知道問題在哪：
+      ‧ 附近根本沒有路網（山區）——換目的地沒用，要換起點
+      ‧ 起訖吸到同一個節點——不是找不到，是根本沒有距離
+      ‧ 真的不連通——這時才該說找不到路線
+    """
+    (sn, sd), (tn, td) = D.snap(D.to_xy(*frm)), D.snap(D.to_xy(*to))
+    for node, dist, which in ((sn, sd, "起點"), (tn, td, "終點")):
+        if node < 0:
+            return ("OUT_OF_COVERAGE",
+                    "%s附近 %d 公尺內沒有可通行的道路，請改點在路上的位置。"
+                    % (which, round(dist)))
+    if sn == tn:
+        return ("NO_ROUTE", "起點與終點在同一個路口上，請把兩點拉開一些。")
+    return None
 
 
 def analyze_route(frm, to):
@@ -326,9 +369,12 @@ def analyze(req: Analyze):
     for p in (req.from_, req.to):
         if not D.inside(p[0], p[1]):
             return fail("OUT_OF_COVERAGE", "起點或終點不在桃園市範圍內。")
+    why = route_error(req.from_, req.to)
+    if why:
+        return fail(why[0], why[1], 422 if why[0] == "NO_ROUTE" else 400)
     out = analyze_route(req.from_, req.to)
     if out is None:
-        return fail("NO_ROUTE", "找不到可行路線，請換一個目的地。", 422)
+        return fail("NO_ROUTE", "起訖點之間沒有連通的機車路線，請換一個目的地。", 422)
     return out
 
 
@@ -349,8 +395,10 @@ def meta():
                 accidents=int(D.meta["accidents"]),
                 intersections=int(D.meta["intersections"]),
                 walk_network_km=round(float(D.w_len.sum()) / 1000, 1),
-                baseline_walk_cells=int(len(D.ref["walk"])),
-                baseline_ride_samples=int(len(D.ref["ride"])))
+                # 是各層樣本數的總和，不是 len(dict)——後者永遠回 3
+                # （edges / bands / med 三個 key）。
+                baseline_walk_cells=sum(len(b) for b in D.ref["walk"]["bands"]),
+                baseline_ride_samples=sum(len(b) for b in D.ref["ride"]["bands"]))
 
 
 @app.get("/")
