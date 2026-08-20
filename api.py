@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""陸安安居指數 後端 API。
+"""Life House 安居指數 後端 API。
 
     POST /api/v3/analyze        走路生活圈 / 騎車路線分析
     GET  /api/v3/intersection   單一路口的個別事故點
@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 import 核心 as core
+import 地名查詢 as geoq
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 HTML = os.path.join(BASE, "index.html")
@@ -36,21 +37,25 @@ STEP = 20.0          # 沿路線取樣間距（公尺）
 RIDE_KMH = 24.0      # 市區機車均速，用來估行駛時間
 
 D: core.Data = None
+GEO: geoq.Geo = None
 
 
 # ------------------------------------------------------------------ 啟動
 def _load():
     """索引、路網、基準一次載入常駐記憶體，之後每次查詢都是 numpy 運算。"""
-    global D
+    global D, GEO
     if D is not None:
         return
     t0 = time.time()
     D = core.Data()
     if D.ref is None:
         raise RuntimeError("找不到 基準.npz，請先執行： python 建立基準.py")
-    print("[陸安] 載入完成 %.1fs ｜ 事故 %s 件 ‧ 路口 %s 處 ‧ 步行網 %.0f km"
+    # 地名索引是選配：沒有它只是不能打字搜地址，地圖點選照常運作
+    GEO = geoq.Geo()
+    print("[Life House] 載入完成 %.1fs ｜ 事故 %s 件 ‧ 路口 %s 處 ‧ 步行網 %.0f km ｜ 地名 %s"
           % (time.time() - t0, D.meta["accidents"], D.meta["intersections"],
-             D.w_len.sum() / 1000))
+             D.w_len.sum() / 1000,
+             ("%d 筆" % GEO.n) if GEO.ok else "未建立"))
 
 
 @asynccontextmanager
@@ -59,7 +64,7 @@ async def lifespan(_app):
     yield
 
 
-app = FastAPI(title="陸安安居指數 API", version="3.0", lifespan=lifespan)
+app = FastAPI(title="Life House 安居指數 API", version="3.0", lifespan=lifespan)
 
 
 @app.exception_handler(RequestValidationError)
@@ -389,6 +394,22 @@ def intersection(lat: float = Query(...), lon: float = Query(...),
     return points_of(int(D.x_keep[k]))
 
 
+@app.get("/api/v3/geocode")
+def geocode(q: str = Query(..., min_length=1, max_length=60),
+            limit: int = Query(8, ge=1, le=20),
+            lat: float | None = Query(None), lon: float | None = Query(None)):
+    """地址／地標／路口的模糊搜尋，給前端的輸入框做 autocomplete。
+
+    lat/lon 是目前的地圖中心（選填）。桃園 12 個區裡有 9 個都有中山路，
+    有了它就能把使用者眼前那一條排前面。
+    """
+    if GEO is None or not GEO.ok:
+        return fail("DATA_UNAVAILABLE",
+                    "地名索引尚未建立，請執行： python 建立地名.py", 503)
+    near = D.to_xy(lat, lon) if (lat is not None and lon is not None) else None
+    return {"q": q, "results": GEO.search(q, limit, near)}
+
+
 @app.get("/api/v3/meta")
 def meta():
     return dict(meta_block(),
@@ -398,7 +419,9 @@ def meta():
                 # 是各層樣本數的總和，不是 len(dict)——後者永遠回 3
                 # （edges / bands / med 三個 key）。
                 baseline_walk_cells=sum(len(b) for b in D.ref["walk"]["bands"]),
-                baseline_ride_samples=sum(len(b) for b in D.ref["ride"]["bands"]))
+                baseline_ride_samples=sum(len(b) for b in D.ref["ride"]["bands"]),
+                geocode=({"places": GEO.n, "addresses": GEO.n_addr}
+                         if GEO and GEO.ok else None))
 
 
 @app.get("/")

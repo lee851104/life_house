@@ -1,5 +1,5 @@
 @echo off
-rem 陸安安居指數 — 本機啟動
+rem Life House 安居指數 — 本機啟動
 rem 用法：直接雙擊，或在此資料夾執行  啟動.bat
 setlocal
 cd /d "%~dp0"

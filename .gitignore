@@ -30,3 +30,6 @@ __pycache__/
 路網.npz
 市界.npz
 基準.npz
+
+# 由 建立地名.py 產生（含 92 萬筆門牌 + FTS5 trigram 索引）
+地名.db

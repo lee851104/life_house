@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>陸安安居指數｜交通安全分析</title>
+<title>Life House 安居指數｜交通安全分析</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
@@ -12,7 +12,7 @@
 
 <!--
   ============================================================================
-  陸安安居指數 — 精簡版
+  Life House 安居指數 — 精簡版
   ----------------------------------------------------------------------------
   設計目標：一個螢幕看完、一眼看懂數據意義。完整版保留於 index_full.html。
 
@@ -123,6 +123,32 @@ a{color:var(--ride);text-decoration:none} a:hover{text-decoration:underline}
   border:1px solid var(--border2);border-radius:8px;font-size:12px;color:var(--text);box-shadow:var(--sh)}
 .mtools button:hover{background:var(--sunken)}
 .mtools button:disabled{opacity:.45;cursor:not-allowed}
+
+/* 地址搜尋。壓在地圖上方，z-index 要高過 .mtools(600) 的下拉才不會被蓋住 */
+.gsearch{position:relative;padding:10px 12px 0}
+.gsearch .gwrap{position:relative;display:flex;align-items:center}
+.gsearch svg{position:absolute;left:11px;color:var(--muted);pointer-events:none}
+.gsearch input{width:100%;padding:9px 34px 9px 33px;border:1px solid var(--border2);
+  border-radius:9px;font-size:13.5px;color:var(--text);background:var(--surface);font-family:inherit}
+.gsearch input:focus{outline:none;border-color:var(--walk);box-shadow:0 0 0 3px var(--walk-soft)}
+.gsearch input::placeholder{color:var(--faint)}
+.gclear{position:absolute;right:6px;width:24px;height:24px;border:0;background:none;
+  color:var(--muted);font-size:16px;line-height:1;border-radius:6px;cursor:pointer}
+.gclear:hover{background:var(--sunken);color:var(--text)}
+.gmenu{position:absolute;left:12px;right:12px;top:calc(100% - 2px);z-index:900;
+  background:var(--surface);border:1px solid var(--border2);border-radius:10px;
+  box-shadow:0 10px 28px rgba(15,23,42,.16);overflow:hidden;max-height:296px;overflow-y:auto}
+.gmenu[hidden]{display:none}
+.gitem{display:flex;align-items:baseline;gap:8px;width:100%;padding:9px 12px;border:0;
+  background:none;text-align:left;font-family:inherit;font-size:13px;color:var(--text);cursor:pointer;
+  border-bottom:1px solid var(--border)}
+.gitem:last-child{border-bottom:0}
+.gitem:hover,.gitem.on{background:var(--walk-soft)}
+.gitem b{font-weight:600}
+.gitem s{text-decoration:none;color:var(--muted);font-size:11.5px}
+.gitem .gtag{margin-left:auto;font-size:10.5px;color:var(--faint);white-space:nowrap}
+.gitem.far .gtag{color:var(--g4)}
+.gnote{padding:9px 12px;font-size:12px;color:var(--muted)}
 
 .mkey{position:absolute;right:12px;bottom:24px;z-index:600;background:rgba(255,255,255,.96);
   border:1px solid var(--border);border-radius:var(--r2);padding:9px 11px;font-size:11.5px;
@@ -330,7 +356,7 @@ a{color:var(--ride);text-decoration:none} a:hover{text-decoration:underline}
     <div class="mark" aria-hidden="true">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
     </div>
-    <div><h1>陸安安居指數</h1><span>交通安全分析</span></div>
+    <div><h1>Life House 安居指數</h1><span>交通安全分析</span></div>
   </div>
 
   <div class="tabs" role="tablist" aria-label="分析模式">
@@ -353,6 +379,17 @@ a{color:var(--ride);text-decoration:none} a:hover{text-decoration:underline}
 
   <!-- ═══════════════ 地圖 ═══════════════ -->
   <div class="mapcard">
+    <div class="gsearch">
+      <div class="gwrap">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="gq" type="search" autocomplete="off" spellcheck="false"
+               role="combobox" aria-expanded="false" aria-controls="gmenu"
+               aria-label="搜尋地址、地標或路口"
+               placeholder="搜尋地址或地標，例如 中壢區環北路300號、中原大學">
+        <button type="button" class="gclear" id="gclear" aria-label="清除" hidden>✕</button>
+      </div>
+      <div class="gmenu" id="gmenu" role="listbox" hidden></div>
+    </div>
     <div id="map" role="application" aria-label="可點選的分析地圖"></div>
 
     <div class="hint" id="hint">
@@ -803,6 +840,12 @@ var LH = (function () {
       $('warn').classList.add('on');
     }
 
+    /* 搜尋框跟著流程走：路線模式下它要設的是起點還是終點，講清楚 */
+    $('gq').placeholder =
+      S.mode === 'walk' ? '搜尋地址或地標，例如 中壢區環北路300號、中原大學'
+      : !S.origin ? '搜尋起點，例如 桃園區中山路'
+      : '搜尋終點，例如 中原大學';
+
     $('hintText').innerHTML = S.mode === 'walk'
       ? '點選地圖上任一位置<small>這裡會成為分析的中心點</small>'
       : (!S.origin ? '點選地圖選擇起點<small>接著挑一個常去地點當終點</small>'
@@ -858,6 +901,110 @@ var LH = (function () {
     });
   }
 
+  /* ---------- 地址搜尋 ----------
+     選一筆結果的行為刻意跟點地圖一模一樣（走路模式設中心點，路線模式先
+     設起點再設終點），這樣搜尋只是多一個輸入方式，不是另一條流程。 */
+  var GS = { items: [], sel: -1, timer: 0, seq: 0, last: '' };
+
+  function gsHide() {
+    $('gmenu').hidden = true;
+    $('gq').setAttribute('aria-expanded', 'false');
+    GS.sel = -1;
+  }
+
+  function gsRender(items, note) {
+    var box = $('gmenu');
+    box.innerHTML = '';
+    GS.items = items || [];
+    GS.sel = -1;
+    if (note) {
+      box.innerHTML = '<div class="gnote">' + note + '</div>';
+    } else if (!GS.items.length) {
+      gsHide(); return;
+    } else {
+      GS.items.forEach(function (r, i) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'gitem' + (r.routable ? '' : ' far');
+        b.setAttribute('role', 'option');
+        b.innerHTML = '<b>' + esc(r.name) + '</b><s>' + esc(r.district || '') + '</s>' +
+          '<span class="gtag">' + esc(r.routable ? r.detail : '附近無道路') + '</span>';
+        b.addEventListener('click', function () { gsPick(i); });
+        box.appendChild(b);
+      });
+    }
+    box.hidden = false;
+    $('gq').setAttribute('aria-expanded', 'true');
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g,
+      function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
+  }
+
+  function gsPick(i) {
+    var r = GS.items[i];
+    if (!r) return;
+    $('gq').value = r.name;
+    $('gclear').hidden = false;
+    gsHide();
+    if (S.mode === 'walk' || !S.origin) setOrigin(r.lat, r.lon);
+    else setDest(r.lat, r.lon, r.name);
+    if (map) map.setView([r.lat, r.lon], Math.max(map.getZoom(), 16));
+  }
+
+  function gsQuery(q) {
+    var seq = ++GS.seq;
+    /* 地圖中心當作「使用者眼前在看哪裡」：桃園 13 個區裡有 9 個都有中山路 */
+    var c = map ? map.getCenter() : null;
+    var url = API_BASE + '/api/v3/geocode?limit=8&q=' + encodeURIComponent(q) +
+      (c ? '&lat=' + c.lat.toFixed(5) + '&lon=' + c.lng.toFixed(5) : '');
+    fetch(url)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (seq !== GS.seq) return;          /* 慢的回應不能蓋掉新的 */
+        if (d && d.error) { gsRender([], d.error.message); return; }
+        if (!d.results || !d.results.length) { gsRender([], '找不到「' + esc(q) + '」'); return; }
+        gsRender(d.results);
+      })
+      .catch(function () { if (seq === GS.seq) gsHide(); });
+  }
+
+  function bindSearch() {
+    var inp = $('gq');
+    inp.addEventListener('input', function () {
+      var q = inp.value.trim();
+      $('gclear').hidden = !q;
+      clearTimeout(GS.timer);
+      if (q.length < 2) { gsHide(); return; }
+      if (q === GS.last) return;
+      GS.last = q;
+      /* 200ms debounce：每敲一個字就打一次 API 是浪費，但延遲再長就有頓感 */
+      GS.timer = setTimeout(function () { gsQuery(q); }, 200);
+    });
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { gsHide(); return; }
+      if (!GS.items.length) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        var n = GS.items.length;
+        GS.sel = e.key === 'ArrowDown' ? (GS.sel + 1) % n
+                                       : (GS.sel <= 0 ? n - 1 : GS.sel - 1);
+        var els = $('gmenu').querySelectorAll('.gitem');
+        els.forEach(function (el, i) { el.classList.toggle('on', i === GS.sel); });
+        if (els[GS.sel]) els[GS.sel].scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        gsPick(GS.sel >= 0 ? GS.sel : 0);
+      }
+    });
+    $('gclear').addEventListener('click', function () {
+      inp.value = ''; GS.last = ''; $('gclear').hidden = true; gsHide(); inp.focus();
+    });
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('.gsearch')) gsHide();
+    });
+  }
+
   function showRange(r) {
     $('dataRange').textContent = r.from.slice(0, 7).replace('-', '/') + '–' +
                                  r.to.slice(0, 7).replace('-', '/');
@@ -865,7 +1012,7 @@ var LH = (function () {
   }
 
   document.addEventListener('DOMContentLoaded', function () {
-    init(); bind(); UI.chips(null); UI.mode('walk'); sync();
+    init(); bind(); bindSearch(); UI.chips(null); UI.mode('walk'); sync();
     /* CFG.range 只是後端還沒回來之前的預設值。真正的期間以 /api/v3/meta 為準，
        否則重建索引換了資料期間，畫面會靜靜地繼續顯示寫死的舊日期。 */
     showRange(CFG.range);
@@ -1105,7 +1252,7 @@ var UI = (function () {
                   DATA_UNAVAILABLE: '資料載入失敗，請稍後再試。' };
     var msg = (err && err.error && (err.error.message || codes[err.error.code])) ||
               (err && err.message) || '發生未知錯誤';
-    console.error('[陸安]', msg);
+    console.error('[Life House]', msg);
     $('warnText').innerHTML = '<b>' + msg + '</b>';
     $('warn').classList.add('on');
   }

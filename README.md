@@ -1,4 +1,4 @@
-# 陸安安居指數
+# Life House 安居指數
 
 **在桃園市的地圖上點一個位置，馬上知道這裡走路或騎車有多安全。**
 
@@ -210,12 +210,13 @@ python 篩選縣市.py 桃園市
 | 端點 | 說明 |
 |---|---|
 | `POST /api/v3/analyze` | `{mode:'walk', lat, lon}` 或 `{mode:'route', from:[lat,lon], to:[lat,lon]}` |
+| `GET /api/v3/geocode?q=&limit=&lat=&lon=` | 地址／地標／路口的模糊搜尋，給輸入框做 autocomplete。`lat`/`lon` 是地圖中心（選填），用來把使用者眼前那條路排前面 |
 | `GET /api/v3/intersection?lat=&lon=&r=` | 單一路口的個別事故點 |
 | `GET /api/v3/meta` | 資料期間與筆數 |
 
 ## 建置流程
 
-每一步的產物都被 .gitignore 排除，clone 之後要依序跑一次（總共約 10 分鐘）：
+每一步的產物都被 .gitignore 排除，clone 之後要依序跑一次（總共約 20 分鐘）：
 
 ```bash
 python 下載資料.py            # data.gov.tw 事故 CSV
@@ -224,7 +225,36 @@ python 建立索引.py            # → 事故索引.db      86,685 件事故、
 python 建立路網.py            # → 路網.npz         OSM 步行網 28,721 km + 機車網
 python 建立市界.py            # → 市界.npz         桃園市界 1,206 km²
 python 建立基準.py            # → 基準.npz         百分位基準分布
+python 建立地名.py            # → 地名.db          地址搜尋（選配，見下）
 ```
+
+`地名.db` 是選配：沒有它，打字搜地址的功能會回 `DATA_UNAVAILABLE`，
+地圖點選與分析照常運作。
+
+## 地址搜尋
+
+輸入框打「中壢區環北路300號」或「中原大學」就能定位，不必在地圖上瞎點。
+
+**索引的單位是路段，不是門牌。** 桃園市界內光 OSM 就有 92 萬個門牌點，全部丟進
+FTS 索引不但肥，排序還會被淹沒——使用者打「中山路」會拿到一整排「中山路1號」
+「中山路3號」而不是中山路本身。所以可搜尋的只有三種：**路段、POI、路口**（約
+數萬筆），門牌另外放在非 FTS 的 `addr` 表，用 (路段, 號) 精確查。真實的地理
+編碼器都是這樣分的。
+
+**中文模糊搜尋靠 FTS5 的 `tokenize='trigram'`。** 預設 tokenizer 不切中文，
+「中壢環北路」會被當成單一 token 而搜不到東西；trigram 改成字元三連組，等於
+子字串比對。Python 3.13 內建的 SQLite 3.51 已含此 tokenizer，不必外掛。
+
+**正規化與查詢共用 `地名正規化.py`**，理由跟 `核心.py` 堅持基準與查詢共用同一套
+數學一樣：建索引時把「龍岡路一段」正規化成「龍岡路1段」，查詢時沒做同一套轉換
+的話，使用者打「龍岡路1段」會搜不到自己資料庫裡的東西。實際要處理的變異包括
+臺／台、全形半形、中文數字段、里與鄰、樓層、以及警政署發生地點特有的雜訊
+（「前0.0公尺附近」「號旁」「V114120279」）。
+
+**為什麼不接現成服務**：Google Places Autocomplete 的 ToS 要求結果顯示在 Google
+地圖上（本專案用 Leaflet + OSM 底圖），Nominatim 公共服務的政策明文禁止
+autocomplete 這種高頻查詢，自架 Nominatim / Photon 要 PostGIS 或 Elasticsearch，
+對一個常駐 420 MB 的單檔 FastAPI 太重。需要的資料本來就在硬碟上。
 
 ## 分數怎麼算
 
