@@ -49,6 +49,7 @@ STRATA = int(ANALYSIS_CONFIG["exposure_strata"])
 # 放寬幾乎不花錢：25 km→100 km 的單次查詢是 0.045s→0.063s。留一個上限只是
 # 當作失控保險。
 ROUTE_LIMIT = float(ANALYSIS_CONFIG["route_limit_m"])
+ROUTE_ALTERNATIVES = int(ANALYSIS_CONFIG["route_alternatives"])
 # 起訖點離最近機車路網節點的上限（公尺）。山區有大片沒有 OSM 道路的區域，
 # 不設上限的話使用者在復興區點兩個相距 2 km 的點，會被吸到 2–3 km 外的
 # 公路上，回傳一條跟兩支圖釘完全對不上的路線——而且畫在地圖上像真的。
@@ -334,7 +335,7 @@ class Data:
         actual = float(np.asarray(self.graph[seq[:-1], seq[1:]]).ravel().sum())
         return seq, actual
 
-    def alternative_paths(self, a, b, count=3):
+    def alternative_paths(self, a, b, count=ROUTE_ALTERNATIVES):
         """回傳最短路徑及至多兩條明顯不同、合理繞行的候選路線。
 
         這不是導航引擎的 k-shortest paths 完整實作：本產品目的是比較安全歷史，

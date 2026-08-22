@@ -311,7 +311,9 @@ def analyze_route_path(seq, length_m):
     km = max(length_m / 1000.0, 0.1)
 
     pts = core.sample_line(xy, STEP)
-    hits = D.acc_tree.query_ball_point(pts, core.R_ROUTE, workers=-1)
+    # Render Free 只有 512 MB RAM；單執行緒避免 KD-tree 平行查詢額外配置暫存陣列。
+    hits = D.acc_tree.query_ball_point(pts, core.R_ROUTE,
+                                       workers=core.ANALYSIS_CONFIG["route_query_workers"])
     flat = [np.asarray(h, dtype=np.int64) for h in hits if len(h)]
     gidx = np.unique(np.concatenate(flat)) if flat else np.empty(0, dtype=np.int64)
 
@@ -329,7 +331,8 @@ def analyze_route_path(seq, length_m):
     night, peak = ratios(gidx)
 
     # 沿線路口：離路線 45m 內
-    kk = D.x_tree.query_ball_point(pts, 45.0, workers=-1)
+    kk = D.x_tree.query_ball_point(pts, 45.0,
+                                   workers=core.ANALYSIS_CONFIG["route_query_workers"])
     seen = {}
     for h in kk:
         for k in h:

@@ -5,7 +5,10 @@ analysis:
     to: 2026-06-30
   walk_radius_m: 500
   route_buffer_m: 40
-  route_limit_m: 100000
+  # Render Free（512 MB）模式：限制最長通勤距離與候選數，控制路徑搜尋尖峰記憶體。
+  route_limit_m: 30000
+  route_alternatives: 1
+  route_query_workers: 1
   snap_max_m: 400
   fatality_weight: 20
   exposure_strata: 8
