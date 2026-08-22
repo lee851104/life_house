@@ -1,0 +1,14 @@
+analysis:
+  city: 桃園市
+  data_range:
+    from: 2024-07-01
+    to: 2026-06-30
+  walk_radius_m: 500
+  route_buffer_m: 40
+  route_limit_m: 100000
+  snap_max_m: 400
+  fatality_weight: 20
+  exposure_strata: 8
+  walk_shrinkage_km: 1.0
+  ride_shrinkage_km: 0.5
+  minimum_walk_network_km: 0.8

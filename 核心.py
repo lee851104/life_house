@@ -27,40 +27,42 @@ import os
 import sqlite3
 
 import numpy as np
+import yaml
 
 BASE = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(BASE, "configs", "analysis.yaml"), encoding="utf-8") as f:
+    ANALYSIS_CONFIG = yaml.safe_load(f)["analysis"]
 DB_PATH = os.path.join(BASE, "事故索引.db")
 NET_PATH = os.path.join(BASE, "路網.npz")
 REF_PATH = os.path.join(BASE, "基準.npz")
 BND_PATH = os.path.join(BASE, "市界.npz")
 
-R_WALK = 500.0      # 走路生活圈半徑（公尺）
-R_ROUTE = 40.0      # 路線緩衝半徑（公尺）
-R_DENS = 500.0      # 路網密度取樣半徑（公尺）
-FATAL_W = 20.0      # 一死約等於 20 件傷害事故的權重
+R_WALK = float(ANALYSIS_CONFIG["walk_radius_m"])
+R_ROUTE = float(ANALYSIS_CONFIG["route_buffer_m"])
+R_DENS = R_WALK
+FATAL_W = float(ANALYSIS_CONFIG["fatality_weight"])
 MONTHS = 24
-STRATA = 8          # 曝險分層數。5 層時最高層橫跨 5–22 km，市郊與市中心被
-                    # 混在一起比，「同類地區」名不符實。
+STRATA = int(ANALYSIS_CONFIG["exposure_strata"])
 
 # Dijkstra 搜尋上限（公尺）。桃園東西寬約 50 km，山路繞行後最長的市內路線
 # 實測 63.5 km（南崁→巴陵），舊值 25 km 會把它判成「找不到可行路線」。
 # 放寬幾乎不花錢：25 km→100 km 的單次查詢是 0.045s→0.063s。留一個上限只是
 # 當作失控保險。
-ROUTE_LIMIT = 100000.0
+ROUTE_LIMIT = float(ANALYSIS_CONFIG["route_limit_m"])
 # 起訖點離最近機車路網節點的上限（公尺）。山區有大片沒有 OSM 道路的區域，
 # 不設上限的話使用者在復興區點兩個相距 2 km 的點，會被吸到 2–3 km 外的
 # 公路上，回傳一條跟兩支圖釘完全對不上的路線——而且畫在地圖上像真的。
 # 400 m 是距離分布的斷層：市界內隨機點 p75=172 m、p90=1082 m。
-SNAP_MAX = 400.0
+SNAP_MAX = float(ANALYSIS_CONFIG["snap_max_m"])
 
 # 收縮的「虛擬觀測量」，單位 km。
 #   adj = (事故加權 + K0 × 同層中位風險) / (路網km + K0)
 # 用路網長度而不是事故件數當證據量：件數當權重時，risk=0 也會被硬拉離 0
 # （adj = K0·med/(n+K0) 恆大於 0），於是「真的很安全」的地方永遠拿不到高分，
 # 80 分以上的等第形同虛設。
-SHRINK_KM_WALK = 1.0
-SHRINK_KM_RIDE = 0.5
-MIN_KM = 0.8        # 500m 圈內可步行路網低於此值視為無人居住，不列入基準
+SHRINK_KM_WALK = float(ANALYSIS_CONFIG["walk_shrinkage_km"])
+SHRINK_KM_RIDE = float(ANALYSIS_CONFIG["ride_shrinkage_km"])
+MIN_KM = float(ANALYSIS_CONFIG["minimum_walk_network_km"])
 
 
 def sev(fat):

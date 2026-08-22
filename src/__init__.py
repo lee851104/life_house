@@ -1,0 +1,1 @@
+"""Life House application package."""
