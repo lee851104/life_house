@@ -231,6 +231,7 @@ def analyze_walk(lat, lon):
         "score": {"value": score, "plain": plain, "confidence": confidence(n),
                   "confidence_reason": "圈內 %d 件事故" % n},
         "stats": {"accidents": n, "fatalities": fat, "injuries": inj},
+        "factors": risk_factors(gidx, score, hotN),
         "intersections": xs,
         "lifestyle": life,
         "trend": trend_of(gidx),
@@ -266,13 +267,46 @@ def route_error(frm, to):
     return None
 
 
-def analyze_route(frm, to):
-    a = D.to_xy(frm[0], frm[1])
-    b = D.to_xy(to[0], to[1])
-    r = route_path(a, b)
-    if r is None:
-        return None
-    seq, length_m = r
+def clamp_score(value):
+    return int(round(max(0, min(100, value))))
+
+
+def risk_factors(gidx, score, hot_n):
+    """把事故資料可直接支持的原因拆成可讀指標。
+
+    不以事故資料猜測人行道、號誌等尚未收錄的道路設施；「行人涉入」與
+    「大型車涉入」只描述本次範圍內的事故紀錄。
+    """
+    n = max(1, int(gidx.size))
+    parties = [D.a_txt[D.g_ix[i]][3] or "" for i in gidx]
+    ped = sum("行人" in s for s in parties)
+    large = sum(any(word in s for word in ("大客車", "大貨車", "聯結車")) for s in parties)
+    night = float(np.isin(D.g_hour[gidx], list(NIGHT_H)).mean()) if gidx.size else 0.0
+
+    factors = [
+        {"icon": "💥", "label": "事故風險", "weight": 30, "score": clamp_score(score),
+         "reason": "相較桃園市同類地區的加權事故風險"},
+        {"icon": "🚦", "label": "路口風險", "weight": 22,
+         "score": clamp_score(90 - hot_n * 14),
+         "reason": ("300 公尺內有 %d 處事故集中的路口" % hot_n if hot_n
+                    else "300 公尺內未見事故集中的路口")},
+        {"icon": "🚚", "label": "大型車涉入", "weight": 15,
+         "score": clamp_score(82 - large / n * 230),
+         "reason": "近兩年 %d／%d 件事故有大型車涉入" % (large, int(gidx.size))},
+        {"icon": "🌙", "label": "夜間事故", "weight": 13,
+         "score": clamp_score(84 - night * 70),
+         "reason": "夜間（18–06）事故占 %d%%" % round(night * 100)},
+        {"icon": "🚶", "label": "行人涉入", "weight": 20,
+         "score": clamp_score(88 - ped / n * 260),
+         "reason": "近兩年 %d／%d 件事故有行人涉入" % (ped, int(gidx.size))},
+    ]
+    for item in factors:
+        item["tone"] = "bad" if item["score"] < 60 else "mid" if item["score"] < 75 else "ok"
+        item["status"] = "風險偏高" if item["score"] < 60 else "需注意" if item["score"] < 75 else "尚可"
+    return factors
+
+
+def analyze_route_path(seq, length_m):
     xy = D.n_xy[seq]
     km = max(length_m / 1000.0, 0.1)
 
@@ -341,7 +375,6 @@ def analyze_route(frm, to):
                zip(*D.inv.transform(xy[:, 0], xy[:, 1])[::-1])]
 
     return {
-        "mode": "route", "demo": False,
         "score": {"value": score, "plain": plain, "confidence": confidence(n),
                   "confidence_reason": "沿線 %d 件事故" % n},
         "stats": {"accidents": n, "fatalities": fat, "injuries": inj},
@@ -357,6 +390,30 @@ def analyze_route(frm, to):
                           corridor_km=round(dens, 1),
                           band=D.band_of(dens, "ride") + 1),
     }
+
+
+def analyze_route(frm, to):
+    a = D.to_xy(frm[0], frm[1])
+    b = D.to_xy(to[0], to[1])
+    paths = D.alternative_paths(a, b)
+    if not paths:
+        return None
+
+    routes = [analyze_route_path(seq, length_m) for seq, length_m in paths]
+    best = max(range(len(routes)), key=lambda i: (routes[i]["score"]["value"],
+                                                   -routes[i]["route"]["km"]))
+    for i, item in enumerate(routes):
+        item["route"].update({
+            "id": i,
+            "label": "最短路線" if i == 0 else "替代路線 %s" % chr(64 + i),
+            "recommended": i == best,
+        })
+
+    # 根物件維持原有欄位，讓舊前端與個別路口展開流程仍可正常使用；前端切換候選
+    # 時會以 routes 內的完整分析結果覆寫這些欄位。
+    out = dict(routes[0])
+    out.update({"mode": "route", "demo": False, "routes": routes})
+    return out
 
 
 # ------------------------------------------------------------------ 路由

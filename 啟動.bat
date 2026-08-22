@@ -25,6 +25,5 @@ for %%F in ("事故索引.db" "路網.npz" "市界.npz" "基準.npz") do (
   )
 )
 
-echo 啟動中… 稍候約 3 秒後開啟 http://127.0.0.1:8000
-start "" http://127.0.0.1:8000
-".venv\Scripts\python.exe" -m uvicorn api:app --host 127.0.0.1 --port 8000
+echo 啟動中… 服務準備完成後會自動開啟 http://127.0.0.1:8000
+".venv\Scripts\python.exe" launcher.py

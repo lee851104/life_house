@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Life House 安居指數｜介面展示版</title>
+<style>
+:root{
+  --ink:#172033;--muted:#667085;--faint:#98a2b3;--line:#e4e8ef;--panel:#fff;
+  --bg:#f3f6fa;--blue:#2563eb;--blue-soft:#eff6ff;--green:#16834b;--green-soft:#ecfdf3;
+  --amber:#d69e00;--orange:#ea580c;--red:#dc2626;--shadow:0 2px 10px rgba(15,23,42,.06);
+  --r:15px;--r2:11px;font-family:Inter,"Noto Sans TC","Microsoft JhengHei",sans-serif;
+}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink)}button,input{font:inherit}
+button{cursor:pointer}.demo{padding:8px 20px;background:#fff8db;border-bottom:1px solid #f3df9a;
+  color:#775b00;text-align:center;font-size:12px;line-height:1.45}.demo b{color:#5c4600}
+header{height:70px;display:flex;align-items:center;gap:20px;padding:0 24px;background:#fff;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px}.logo{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;
+  color:#fff;background:linear-gradient(145deg,#1d4ed8,#16a34a);font-size:19px}.brand h1{font-size:17px;margin:0}.brand small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.tabs{margin-left:auto;display:flex;padding:4px;border-radius:11px;background:#f2f4f7}.tab{padding:8px 14px;border:0;border-radius:8px;background:transparent;color:var(--muted);font-size:13px;font-weight:700}.tab.on{background:#fff;color:var(--blue);box-shadow:var(--shadow)}
+main{max-width:1400px;margin:0 auto;padding:16px 20px 28px}.search-card{display:flex;gap:10px;align-items:center;padding:13px 14px;margin-bottom:14px;background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.search-card label{font-size:12px;font-weight:800;white-space:nowrap}.field{flex:1;min-width:0;position:relative}.field input{width:100%;height:40px;border:1px solid #ccd3de;border-radius:9px;padding:0 12px;background:#fff;color:var(--ink)}.field input:focus{outline:0;border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.primary{height:40px;border:0;border-radius:9px;padding:0 16px;background:var(--blue);color:#fff;font-size:13px;font-weight:800}.primary:hover{filter:brightness(.96)}
+.samples{display:flex;gap:6px;flex-wrap:wrap}.sample{border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:20px;padding:6px 10px;font-size:11.5px}.sample:hover{border-color:#9bbcf7;color:var(--blue)}
+.route-fields{display:none;flex:1;gap:8px}.route-fields .field{display:flex;align-items:center;gap:7px}.route-fields b{font-size:11px}.view-route .area-field{display:none}.view-route .route-fields{display:flex}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 430px;gap:14px;align-items:start}.card,.map-card{background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.map-card{overflow:hidden}.map-head{height:50px;display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:1px solid var(--line);font-size:13px;font-weight:800}.map-head .tag{margin-left:auto}.tag{display:inline-flex;align-items:center;border-radius:20px;padding:4px 9px;background:#f2f4f7;color:var(--muted);font-size:10.5px;font-weight:700}
+.map{position:relative;height:620px;overflow:hidden;background-color:#e8eef2;background-image:linear-gradient(#dfe8df 1px,transparent 1px),linear-gradient(90deg,#dfe8df 1px,transparent 1px);background-size:72px 72px}
+.block{position:absolute;border-radius:7px;background:#d9e1e8;border:3px solid #eef2f5}.b1{left:5%;top:7%;width:23%;height:18%}.b2{left:36%;top:5%;width:18%;height:22%}.b3{right:6%;top:8%;width:29%;height:18%}.b4{left:7%;bottom:8%;width:26%;height:27%}.b5{left:42%;bottom:8%;width:18%;height:21%}.b6{right:5%;bottom:10%;width:27%;height:27%}
+.road{position:absolute;background:#fff;border:1px solid #cfd7df;box-shadow:0 0 0 3px rgba(255,255,255,.68)}.h1{left:-3%;top:31%;width:107%;height:14px;transform:rotate(-2deg)}.h2{left:-3%;top:65%;width:108%;height:13px;transform:rotate(3deg)}.v1{left:31%;top:-4%;width:13px;height:108%;transform:rotate(2deg)}.v2{right:34%;top:-5%;width:14px;height:110%;transform:rotate(-3deg)}.d1{left:12%;top:49%;width:90%;height:11px;transform:rotate(-31deg);transform-origin:left center}
+.area-layer,.route-layer{position:absolute;inset:0}.route-layer{display:none}.view-route .area-layer{display:none}.view-route .route-layer{display:block}
+.circle{position:absolute;width:390px;height:390px;left:50%;top:50%;transform:translate(-50%,-50%);border:2px dashed #15803d;border-radius:50%;background:rgba(22,163,74,.07);box-shadow:inset 0 0 0 1px rgba(255,255,255,.5)}
+.center-pin{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:50% 50% 50% 5px;background:#15803d;border:3px solid #fff;box-shadow:0 3px 9px rgba(0,0,0,.25);rotate:-45deg}.center-pin i{display:block;rotate:45deg;color:#fff;font-style:normal;text-align:center;line-height:27px;font-weight:900}
+.radius{position:absolute;left:50%;top:calc(50% - 205px);transform:translateX(-50%);padding:3px 9px;border-radius:20px;background:#fff;color:#15803d;border:1px solid #80c89e;font-size:11px;font-weight:800}
+.risk-dot{position:absolute;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:#fff;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.24);font-size:11px;font-weight:900}.rd1{left:31%;top:35%;background:#f59e0b}.rd2{right:29%;top:43%;background:#ea580c}.rd3{left:43%;bottom:24%;background:#dc2626}
+.place-label{position:absolute;left:50%;top:calc(50% + 33px);transform:translateX(-50%);max-width:260px;padding:4px 9px;border-radius:7px;background:rgba(255,255,255,.94);box-shadow:var(--shadow);font-size:11px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.route-set{position:absolute;inset:0;opacity:.25;transition:.2s}.route-set.on{opacity:1}.seg{position:absolute;height:7px;border-radius:10px;transform-origin:left center;box-shadow:0 0 0 2px #fff}.route-a .seg{background:#64748b}.route-b .seg{background:#16a34a}.route-c .seg{background:#f59e0b}.s1{left:18%;top:72%;width:29%;transform:rotate(-40deg)}.s2{left:39%;top:51%;width:29%;transform:rotate(-7deg)}.s3{left:66%;top:48%;width:21%;transform:rotate(-34deg)}.route-b .s1{left:18%;top:72%;width:33%;transform:rotate(-18deg)}.route-b .s2{left:49%;top:62%;width:27%;transform:rotate(-42deg)}.route-b .s3{left:69%;top:43%;width:21%;transform:rotate(-15deg)}.route-c .s1{left:18%;top:72%;width:19%;transform:rotate(-65deg)}.route-c .s2{left:27%;top:46%;width:43%;transform:rotate(2deg)}.route-c .s3{left:68%;top:47%;width:20%;transform:rotate(-30deg)}
+.pin{position:absolute;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;color:#fff;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.22);font-weight:900;font-size:11px}.pin.start{left:16%;top:69%;background:#15803d}.pin.end{right:11%;top:33%;background:#dc2626}
+.side{display:flex;flex-direction:column;gap:12px}.card{padding:15px}.card-h{display:flex;align-items:center;gap:7px;margin-bottom:11px;font-size:12px;font-weight:800}.card-h .tag{margin-left:auto}
+.score{display:flex;align-items:center;gap:16px}.score-num{width:88px;height:88px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;border:10px solid #e9eef4;outline:8px solid #fff;box-shadow:0 0 0 2px var(--score-color,#ca8a04)}.score-num b{font-size:30px;line-height:1;color:var(--score-color,#ca8a04)}.score-num small{font-size:9.5px;color:var(--faint)}.score-copy{flex:1}.grade{display:inline-block;padding:4px 10px;border-radius:20px;background:var(--grade-bg,#fff8d9);color:var(--score-color,#a16207);font-size:12px;font-weight:900}.score-copy p{font-size:13px;line-height:1.55;margin:8px 0 0;color:#344054}
+.why{padding:10px 11px;border-radius:10px;background:var(--blue-soft);border:1px solid #cfe0fb;color:#1e4f8e;font-size:12px;line-height:1.55;margin-bottom:5px}.factor{padding:10px 0;border-bottom:1px solid #edf0f4}.factor:last-child{border-bottom:0;padding-bottom:0}.factor-top{display:flex;align-items:center;gap:7px;font-size:12px}.factor-top b{font-size:12.5px}.weight{color:var(--faint);font-size:10.5px}.state{margin-left:auto;border-radius:20px;padding:3px 8px;font-size:10.5px;font-weight:800}.state.ok{background:#ecfdf3;color:#15803d}.state.mid{background:#fff8d9;color:#a16207}.state.bad{background:#fff0e8;color:#c2410c}.fscore{width:24px;text-align:right;font-weight:900}.bar{display:flex;gap:3px;margin-top:7px}.bar i{height:7px;flex:1;border-radius:2px;background:#e9edf2}.bar i.on.ok{background:#22c55e}.bar i.on.mid{background:#eab308}.bar i.on.bad{background:#f97316}.note{font-size:10.5px;color:var(--muted);margin-top:6px}
+.hot-list,.route-list{display:flex;flex-direction:column;gap:7px}.hot{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:10px;background:#f8fafc;border:1px solid var(--line)}.hot-num{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:#fff0e8;color:#c2410c;font-weight:900;font-size:12px}.hot div{min-width:0}.hot b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hot small{font-size:10.5px;color:var(--muted)}
+.route-card{display:grid;grid-template-columns:34px 1fr auto;gap:9px;align-items:center;width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#f8fafc;text-align:left;color:var(--ink)}.route-card.on{background:#fff;border-color:var(--blue);box-shadow:0 0 0 2px rgba(37,99,235,.09)}.route-score{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:#e8eefc;color:var(--blue);font-weight:900}.route-card.best .route-score{background:#dcfce7;color:#15803d}.route-card b{display:block;font-size:12px}.route-card small{display:block;font-size:10.5px;color:var(--muted);margin-top:2px}.show{font-size:10px;color:var(--blue);font-weight:800}.route-card.on .show{color:#15803d}
+.only-area{display:block}.only-route{display:none}.view-route .only-area{display:none}.view-route .only-route{display:block}.footnote{margin-top:12px;color:var(--faint);font-size:10.5px;text-align:center;line-height:1.5}
+@media(max-width:1050px){.layout{grid-template-columns:1fr}.map{height:430px}.side{display:grid;grid-template-columns:1fr 1fr}.side .card:first-child{grid-column:1/-1}}
+@media(max-width:700px){header{height:auto;padding:12px 14px;flex-wrap:wrap}.tabs{width:100%;margin-left:0}.tab{flex:1}.demo{padding:7px 12px}main{padding:12px}.search-card{align-items:stretch;flex-wrap:wrap}.search-card label{width:100%}.field,.route-fields{flex-basis:100%}.route-fields{flex-direction:column}.primary{flex:1}.samples{width:100%}.map{height:360px}.circle{width:280px;height:280px}.radius{top:calc(50% - 150px)}.side{display:flex}.layout{gap:10px}}
+</style>
+</head>
+<body>
+<div class="demo">🧪 <b>介面展示版：</b>所有地點、分數與事故數字皆為假資料，不可作為安全判斷。</div>
+<header>
+  <div class="brand"><div class="logo">⌂</div><div><h1>Life House 安居指數</h1><small>交通安全介面提案</small></div></div>
+  <div class="tabs" role="tablist" aria-label="展示模式">
+    <button class="tab on" data-view="area" role="tab" aria-selected="true">📍 生活圈安全</button>
+    <button class="tab" data-view="route" role="tab" aria-selected="false">🛣️ 路線安全</button>
+  </div>
+</header>
+<main>
+  <section class="search-card">
+    <label class="area-field" for="placeQuery">查詢地點</label>
+    <div class="field area-field"><input id="placeQuery" list="places" value="高鐵桃園站" placeholder="輸入地點，例如：中原大學"></div>
+    <div class="route-fields">
+      <div class="field"><b>起</b><input id="routeStart" list="places" value="高鐵桃園站" aria-label="路線起點"></div>
+      <div class="field"><b>終</b><input id="routeEnd" list="places" value="中壢車站" aria-label="路線終點"></div>
+    </div>
+    <button class="primary" id="analyzeBtn">查看假資料</button>
+    <div class="samples" id="samples">
+      <button class="sample" data-place="高鐵桃園站">高鐵桃園站</button>
+      <button class="sample" data-place="桃園車站">桃園車站</button>
+      <button class="sample" data-place="中原大學">中原大學</button>
+    </div>
+    <datalist id="places"><option>高鐵桃園站</option><option>桃園車站</option><option>中壢車站</option><option>中原大學</option><option>青埔生活圈</option></datalist>
+  </section>
+
+  <div class="layout">
+    <section class="map-card">
+      <div class="map-head"><span id="mapTitle">🗺️ 高鐵桃園站生活圈</span><span class="tag only-area">500m 範圍</span><span class="tag only-route">點路線可切換</span></div>
+      <div class="map" aria-label="示意地圖，非真實道路圖">
+        <div class="block b1"></div><div class="block b2"></div><div class="block b3"></div><div class="block b4"></div><div class="block b5"></div><div class="block b6"></div>
+        <div class="road h1"></div><div class="road h2"></div><div class="road v1"></div><div class="road v2"></div><div class="road d1"></div>
+        <div class="area-layer">
+          <div class="circle"></div><div class="radius">500m 生活圈</div><div class="center-pin"><i>●</i></div>
+          <div class="risk-dot rd1">12</div><div class="risk-dot rd2">18</div><div class="risk-dot rd3">27</div><div class="place-label" id="placeLabel">高鐵桃園站</div>
+        </div>
+        <div class="route-layer">
+          <div class="route-set route-a" data-route="0"><i class="seg s1"></i><i class="seg s2"></i><i class="seg s3"></i></div>
+          <div class="route-set route-b on" data-route="1"><i class="seg s1"></i><i class="seg s2"></i><i class="seg s3"></i></div>
+          <div class="route-set route-c" data-route="2"><i class="seg s1"></i><i class="seg s2"></i><i class="seg s3"></i></div>
+          <div class="pin start">起</div><div class="pin end">終</div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="side">
+      <section class="card">
+        <div class="card-h"><span id="scoreTitle">🚶 生活圈安全</span><span class="tag" id="scopeTag">500m</span></div>
+        <div class="score">
+          <div class="score-num" id="scoreRing"><b id="scoreValue">74</b><small>/ 100 分</small></div>
+          <div class="score-copy"><span class="grade" id="grade">相對安全</span><p id="summary">整體事故風險尚可，但 300m 內仍有 1 處事故較集中的路口。</p></div>
+        </div>
+      </section>
+
+      <section class="card only-area">
+        <div class="card-h">📊 風險原因<span class="tag">假資料</span></div>
+        <div class="why" id="why">主要需注意 🚦 路口風險與 🚶 行人涉入。</div>
+        <div id="factors"></div>
+      </section>
+
+      <section class="card only-area">
+        <div class="card-h">⚠️ 300m 內需注意<span class="tag">最多 3 處</span></div>
+        <div class="hot-list" id="hotList"></div>
+      </section>
+
+      <section class="card only-route">
+        <div class="card-h">🧭 候選路線<span class="tag">3 條</span></div>
+        <div class="why" id="routeWhy">建議改走替代路線 B，時間相近但安全分數較高。</div>
+        <div class="route-list" id="routeList"></div>
+      </section>
+    </aside>
+  </div>
+  <p class="footnote">此檔案僅供內部討論介面與資訊層級；地圖、地址、事故與評分皆為展示內容。</p>
+</main>
+
+<script>
+(function(){
+  'use strict';
+  var DATA={
+    '高鐵桃園站':{score:74,accidents:38,summary:'整體事故風險尚可，但 300m 內仍有 1 處事故較集中的路口。',
+      factors:[['💥','事故風險',30,78,'近兩年加權事故密度低於同類生活圈'],['🚦','路口風險',22,62,'300m 內有 1 處事故集中路口'],['🚚','大型車涉入',15,82,'38 件事故中有 1 件涉及大型車'],['🌙','夜間事故',13,71,'夜間事故約占 19%'],['🚶','行人涉入',20,65,'38 件事故中有 4 件涉及行人']],
+      hot:[[18,'領航南路／站前西路','距離約 210m'],[12,'青埔路／高鐵站前路','距離約 285m']]},
+    '桃園車站':{score:58,accidents:96,summary:'事故與路口風險偏高，過主要幹道路口時需要留意。',
+      factors:[['💥','事故風險',30,55,'事故密度高於同類生活圈'],['🚦','路口風險',22,48,'300m 內有 3 處事故集中路口'],['🚚','大型車涉入',15,72,'96 件事故中有 5 件涉及大型車'],['🌙','夜間事故',13,61,'夜間事故約占 28%'],['🚶','行人涉入',20,54,'96 件事故中有 14 件涉及行人']],
+      hot:[[31,'中正路／復興路','距離約 120m'],[27,'中華路／大同路','距離約 230m'],[19,'民生路／成功路','距離約 295m']]},
+    '中原大學':{score:68,accidents:61,summary:'整體屬中等風險，尖峰時段與校園周邊路口較需要注意。',
+      factors:[['💥','事故風險',30,66,'事故密度接近同類生活圈平均'],['🚦','路口風險',22,59,'300m 內有 2 處事故集中路口'],['🚚','大型車涉入',15,84,'大型車涉入比例較低'],['🌙','夜間事故',13,63,'夜間事故約占 26%'],['🚶','行人涉入',20,70,'行人涉入事故約占 7%']],
+      hot:[[24,'中北路／實踐路','距離約 170m'],[17,'弘揚路／日新路','距離約 260m']]}
+  };
+  var ROUTES=[];
+  var activeRoute=1;
+  function el(id){return document.getElementById(id)}
+  function hash(text){var n=0;for(var i=0;i<text.length;i++)n=(n*31+text.charCodeAt(i))%997;return n}
+  function fallback(name){
+    var n=hash(name||'展示地點'),score=52+n%31,count=28+n%70;
+    return {score:score,accidents:count,summary:'此為依輸入文字產生的展示結果，只用來預覽介面。',
+      factors:[['💥','事故風險',30,Math.max(35,score-4),'以假資料估算的事故密度'],['🚦','路口風險',22,45+n%35,'300m 內模擬 1 處事故集中路口'],['🚚','大型車涉入',15,68+n%22,'假資料中的大型車涉入比例'],['🌙','夜間事故',13,55+n%27,'假資料中的夜間事故比例'],['🚶','行人涉入',20,50+n%32,'假資料中的行人涉入比例']],
+      hot:[[12+n%18,(name||'展示地點')+'附近主要路口','距離約 '+(120+n%160)+'m']]};
+  }
+  function tone(score){return score<60?'bad':score<75?'mid':'ok'}
+  function state(score){return score<60?'風險偏高':score<75?'需注意':'尚可'}
+  function scoreStyle(score){
+    var color=score<60?'#ea580c':score<75?'#ca8a04':'#15803d',bg=score<60?'#fff0e8':score<75?'#fff8d9':'#ecfdf3';
+    el('scoreRing').style.setProperty('--score-color',color);el('grade').style.setProperty('--score-color',color);el('grade').style.setProperty('--grade-bg',bg);
+    el('grade').textContent=score<45?'較高風險':score<60?'中等風險':score<80?'相對安全':'非常安全';
+  }
+  function bars(score,t){var out='';for(var i=1;i<=10;i++)out+='<i class="'+(i<=Math.round(score/10)?'on '+t:'')+'"></i>';return out}
+  function renderArea(name){
+    name=(name||'高鐵桃園站').trim();var d=DATA[name]||fallback(name);
+    el('placeQuery').value=name;el('placeLabel').textContent=name;el('mapTitle').textContent='🗺️ '+name+'生活圈';
+    el('scoreTitle').textContent='🚶 生活圈安全';el('scopeTag').textContent='500m';el('scoreValue').textContent=d.score;el('summary').textContent=d.summary;scoreStyle(d.score);
+    var ranked=d.factors.slice().sort(function(a,b){return a[3]-b[3]}).slice(0,2);
+    el('why').textContent='主要需注意 '+ranked.map(function(x){return x[0]+' '+x[1]}).join('與')+'。';
+    el('factors').innerHTML=d.factors.map(function(f){var t=tone(f[3]);return '<div class="factor"><div class="factor-top"><span>'+f[0]+'</span><b>'+f[1]+'</b><span class="weight">權重 '+f[2]+'%</span><span class="state '+t+'">'+state(f[3])+'</span><span class="fscore">'+f[3]+'</span></div><div class="bar">'+bars(f[3],t)+'</div><div class="note">'+f[4]+'</div></div>'}).join('');
+    el('hotList').innerHTML=d.hot.map(function(h){return '<div class="hot"><span class="hot-num">'+h[0]+'</span><div><b>'+h[1]+'</b><small>'+h[2]+' · 近兩年假資料</small></div></div>'}).join('');
+  }
+  function makeRoutes(start,end){
+    var n=hash(start+'→'+end),base=54+n%12;
+    ROUTES=[
+      {label:'最短路線',score:base,km:(6.8+(n%9)/10).toFixed(1),min:18+n%3,risk:3+n%4},
+      {label:'替代路線 A',score:Math.min(91,base+8),km:(7.4+(n%8)/10).toFixed(1),min:20+n%3,risk:2+n%3},
+      {label:'替代路線 B',score:Math.min(94,base+17),km:(7.7+(n%7)/10).toFixed(1),min:21+n%3,risk:1+n%3}
+    ];activeRoute=2;renderRoutes();
+  }
+  function renderRoutes(){
+    var r=ROUTES[activeRoute],fast=ROUTES[0];
+    el('scoreTitle').textContent='🛣️ '+r.label;el('scopeTag').textContent=r.km+' km';el('scoreValue').textContent=r.score;
+    el('summary').textContent='約 '+r.min+' 分鐘，沿線有 '+r.risk+' 處需注意的高風險路口。';scoreStyle(r.score);
+    el('routeWhy').textContent=activeRoute===0?'目前顯示距離最短的路線，可切換替代道路比較。':'建議改走 '+r.label+'，約多 '+(r.min-fast.min)+' 分鐘，安全分數提高 '+(r.score-fast.score)+' 分。';
+    el('routeList').innerHTML=ROUTES.map(function(x,i){return '<button class="route-card '+(i===activeRoute?'on ':'')+(i===2?'best':'')+'" data-route="'+i+'"><span class="route-score">'+x.score+'</span><span><b>'+x.label+(i===2?'　★ 建議':'')+'</b><small>'+x.km+' km · '+x.min+' 分 · 高風險路口 '+x.risk+' 處</small></span><span class="show">'+(i===activeRoute?'顯示中':'查看 ›')+'</span></button>'}).join('');
+    document.querySelectorAll('.route-set').forEach(function(x){x.classList.toggle('on',+x.dataset.route===activeRoute)});
+  }
+  function setView(view){
+    document.body.classList.toggle('view-route',view==='route');
+    document.querySelectorAll('.tab').forEach(function(x){var on=x.dataset.view===view;x.classList.toggle('on',on);x.setAttribute('aria-selected',on?'true':'false')});
+    el('samples').style.display=view==='route'?'none':'flex';
+    if(view==='route'){
+      var s=el('routeStart').value.trim()||'高鐵桃園站',e=el('routeEnd').value.trim()||'中壢車站';
+      el('mapTitle').textContent='🗺️ '+s+' → '+e;makeRoutes(s,e);
+    }else renderArea(el('placeQuery').value);
+  }
+  document.querySelectorAll('.tab').forEach(function(b){b.addEventListener('click',function(){setView(b.dataset.view)})});
+  document.querySelectorAll('.sample').forEach(function(b){b.addEventListener('click',function(){renderArea(b.dataset.place)})});
+  el('analyzeBtn').addEventListener('click',function(){
+    if(document.body.classList.contains('view-route')){var s=el('routeStart').value.trim()||'起點',e=el('routeEnd').value.trim()||'終點';el('mapTitle').textContent='🗺️ '+s+' → '+e;makeRoutes(s,e)}
+    else renderArea(el('placeQuery').value);
+  });
+  [el('placeQuery'),el('routeStart'),el('routeEnd')].forEach(function(input){input.addEventListener('keydown',function(e){if(e.key==='Enter')el('analyzeBtn').click()})});
+  el('routeList').addEventListener('click',function(e){var b=e.target.closest('[data-route]');if(!b)return;activeRoute=+b.dataset.route;renderRoutes()});
+  renderArea('高鐵桃園站');
+})();
+</script>
+</body>
+</html>

@@ -279,6 +279,32 @@ a{color:var(--ride);text-decoration:none} a:hover{text-decoration:underline}
 .chip.ghost{border-style:dashed;color:var(--muted)}
 .chip.ghost:hover{color:var(--ride)}
 
+/* ── 候選路線 ───────────────────────────────────────────── */
+.routelead{padding:11px 12px;border:1px solid #BBE6CB;border-radius:var(--r2);background:#F0FDF4;
+  font-size:12.5px;line-height:1.55;color:#166534;margin-bottom:9px}
+.routelead b{font-size:13px}
+.routelist{display:flex;flex-direction:column;gap:8px}
+.routeitem{display:flex;align-items:center;gap:10px;width:100%;padding:10px 11px;border:1px solid var(--border);
+  border-radius:var(--r2);background:var(--sunken);text-align:left;font-family:inherit;color:var(--text);cursor:pointer;transition:.15s}
+.routeitem:hover{border-color:#93C5FD;background:#F8FBFF}
+.routeitem.on{border-color:var(--ride);background:var(--ride-soft);box-shadow:inset 0 0 0 1px rgba(37,99,235,.08)}
+.routescore{width:34px;height:34px;display:grid;place-items:center;flex-shrink:0;border-radius:9px;background:#E0E7FF;
+  color:var(--ride);font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
+.routeitem.best .routescore{background:#DCFCE7;color:#15803D}
+.routebody{min-width:0;flex:1}.routename{font-size:13px;font-weight:700}.routedetail{font-size:11.5px;color:var(--muted);margin-top:3px}
+.routepick{font-size:11px;font-weight:700;color:var(--ride);white-space:nowrap}.routeitem.on .routepick{color:#166534}
+
+/* ── 生活圈風險構成 ─────────────────────────────────────── */
+.factorwhy{display:flex;gap:9px;align-items:flex-start;padding:10px 11px;margin-bottom:10px;border:1px solid #BFDBFE;
+  border-radius:var(--r2);background:#EFF6FF;font-size:12.5px;line-height:1.55;color:#1E3A5F}
+.factorwhy strong{color:#1D4ED8}.factorlist{display:flex;flex-direction:column}.factor{padding:11px 0;border-bottom:1px solid var(--border)}
+.factor:last-child{border-bottom:0;padding-bottom:0}.factorhead{display:flex;align-items:center;gap:7px;font-size:13px}.factorhead b{font-size:13.5px}
+.factorweight{font-size:11px;color:var(--muted);font-weight:600}.factorstatus{margin-left:auto;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700}
+.factorstatus.bad{background:#FFF0E8;color:#C2410C}.factorstatus.mid{background:#FFF8D9;color:#A16207}.factorstatus.ok{background:#ECFDF3;color:#15803D}
+.factorscore{margin-left:6px;min-width:23px;text-align:right;font-weight:800;font-variant-numeric:tabular-nums}.factorscore.bad{color:#EA580C}.factorscore.mid{color:#CA8A04}.factorscore.ok{color:#15803D}
+.factorbar{display:flex;gap:4px;margin-top:9px}.factorbar i{height:9px;flex:1;border-radius:2px;background:#E9EEF4}.factorbar i.on.bad{background:#F97316}.factorbar i.on.mid{background:#EAB308}.factorbar i.on.ok{background:#22C55E}
+.factorreason{font-size:11.5px;line-height:1.45;color:var(--muted);margin-top:7px}
+
 /* ── 生活型態星等 ───────────────────────────────────────── */
 .life{display:grid;grid-template-columns:1fr 1fr;gap:9px}
 .life>div:last-child:nth-child(odd){grid-column:1/-1}
@@ -483,6 +509,22 @@ a{color:var(--ride);text-decoration:none} a:hover{text-decoration:underline}
       </div>
     </section>
 
+    <!-- 生活圈單點：以實際事故資料拆出風險原因 -->
+    <section class="card" id="cardFactors" hidden>
+      <div class="ctitle"><span>📊 風險原因</span>
+        <span class="rt">近兩年事故資料</span></div>
+      <div class="factorwhy" id="factorWhy"></div>
+      <div class="factorlist" id="factorList"></div>
+    </section>
+
+    <!-- 路線模式：最短與替代走法可直接切換比較 -->
+    <section class="card" id="cardRoutes" hidden>
+      <div class="ctitle"><span>🧭 候選路線</span>
+        <span class="rt" id="routeCount">—</span></div>
+      <div id="routeLead"></div>
+      <div class="routelist" id="routeList"></div>
+    </section>
+
     <!-- 適合誰 -->
     <section class="card" id="cardLife" hidden>
       <div class="ctitle"><span id="lifeTitle">適合哪種生活型態？</span>
@@ -566,7 +608,7 @@ var LH = (function () {
   'use strict';
 
   var S = { mode: 'walk', origin: null, dest: null, destName: null,
-            inBounds: true, data: null, focus: -1, compact: false };
+            inBounds: true, data: null, focus: -1, routePick: 0, compact: false };
   var map, gRings, gRoute, gMarks, gPts, mOrigin, mDest;
 
   function init() {
@@ -601,7 +643,7 @@ var LH = (function () {
   function setOrigin(lat, lon) {
     S.origin = [lat, lon];
     S.inBounds = inBox(lat, lon);
-    S.data = null; S.focus = -1;
+    S.data = null; S.focus = -1; S.routePick = 0;
     if (map) {
       if (!mOrigin) {
         mOrigin = L.marker(S.origin, { icon: pin('s', '📍'), draggable: true, zIndexOffset: 900 })
@@ -620,7 +662,7 @@ var LH = (function () {
 
   function setDest(lat, lon, name) {
     S.dest = [lat, lon]; S.destName = name || '地圖選點';
-    S.data = null; S.focus = -1;
+    S.data = null; S.focus = -1; S.routePick = 0;
     if (map) {
       if (!mDest) {
         mDest = L.marker(S.dest, { icon: pin('e', '終'), draggable: true, zIndexOffset: 900 }).addTo(map);
@@ -746,6 +788,18 @@ var LH = (function () {
     }
   }
 
+  function pickRoute(i) {
+    if (!S.data || !S.data.routes || !S.data.routes[i] || i === S.routePick) return;
+    var choice = S.data.routes[i];
+    /* 將目前選中的候選同步回既有的根欄位；地圖、路口展開、分數與生活型態都能
+       沿用同一套渲染流程，而不是只換一條線、旁邊卻留著前一條路線的資料。 */
+    ['score', 'stats', 'route', 'intersections', 'lifestyle', 'trend', 'data_meta'].forEach(function (k) {
+      S.data[k] = choice[k];
+    });
+    S.routePick = i; S.data.activeRoute = i; S.focus = -1;
+    UI.render(S.data, 'route'); drawResult();
+  }
+
   /* ---------- 地圖大小（compact） ---------- */
   function setCompact(on) {
     S.compact = on;
@@ -757,7 +811,7 @@ var LH = (function () {
 
   /* ---------- 模式 / 重設 ---------- */
   function setMode(m) {
-    S.mode = m; S.data = null; S.focus = -1;
+    S.mode = m; S.data = null; S.focus = -1; S.routePick = 0;
     if (map) {
       gRings.clearLayers(); gRoute.clearLayers(); gMarks.clearLayers(); gPts.clearLayers();
       if (m === 'walk' && mDest) { map.removeLayer(mDest); mDest = null; S.dest = null; S.destName = null; }
@@ -771,7 +825,7 @@ var LH = (function () {
 
   function reset() {
     S.origin = S.dest = S.destName = S.data = null;
-    S.focus = -1; S.inBounds = true;
+    S.focus = -1; S.routePick = 0; S.inBounds = true;
     if (map) {
       if (mOrigin) { map.removeLayer(mOrigin); mOrigin = null; }
       if (mDest) { map.removeLayer(mDest); mDest = null; }
@@ -787,7 +841,7 @@ var LH = (function () {
   }
 
   function clearResults() {
-    ['cardScore', 'cardLife', 'cardNums', 'cardX'].forEach(function (id) { $(id).hidden = true; });
+    ['cardScore', 'cardFactors', 'cardRoutes', 'cardLife', 'cardNums', 'cardX'].forEach(function (id) { $(id).hidden = true; });
     /* 內容也要清掉：只隱藏卡片的話，DOM 裡的舊項目仍可被點到 */
     $('xlist').innerHTML = ''; $('life').innerHTML = '';
     $('cardEmpty').hidden = false;
@@ -818,7 +872,7 @@ var LH = (function () {
         /* 後端以 {error:{code,message}} 回報超出服務範圍、無可行路線等狀況，
            交給 UI.error（它已備好各 code 的中文文案）*/
         if (d && d.error) { UI.error(d); return; }
-        S.data = d; $('bSize').hidden = false; setCompact(true);
+        S.data = d; S.routePick = 0; d.activeRoute = 0; $('bSize').hidden = false; setCompact(true);
         UI.render(d, S.mode); drawResult();
       })
       .catch(UI.error);
@@ -827,15 +881,21 @@ var LH = (function () {
   /* ---------- 同步文案與按鈕 ---------- */
   function sync() {
     var has = !!S.origin;
-    $('bGo').disabled = !ready();
+    var openedAsFile = location.protocol === 'file:';
+    $('bGo').disabled = !ready() || openedAsFile;
     $('bGo').classList.toggle('ride', S.mode === 'route');
     $('bGoText').textContent =
-      !has ? '請先在地圖上選點'
+      openedAsFile ? '請從本機服務開啟此頁'
+      : !has ? '請先在地圖上選點'
       : !S.inBounds ? '位置不在桃園市範圍'
       : (S.mode === 'route' && !S.dest) ? '請選擇目的地'
       : (S.mode === 'walk' ? '分析這裡的走路安全' : '分析這條路線');
 
-    if (has && !S.inBounds) {
+    if (openedAsFile) {
+      $('warnText').innerHTML = '<b>目前是直接開啟 index.html。</b>請雙擊專案內的「啟動.bat」，' +
+        '並使用自動開啟的 http://127.0.0.1:8000。';
+      $('warn').classList.add('on');
+    } else if (has && !S.inBounds) {
       $('warnText').innerHTML = '<b>選定位置不在桃園市範圍內。</b>本版本目前僅支援桃園市，請重新選點。';
       $('warn').classList.add('on');
     }
@@ -1026,7 +1086,7 @@ var LH = (function () {
   });
 
   return { state: function () { return S; }, setOrigin: setOrigin, setDest: setDest,
-           focusX: focusX, analyze: analyze, reset: reset, fit: fit };
+           focusX: focusX, pickRoute: pickRoute, analyze: analyze, reset: reset, fit: fit };
 })();
 
 
@@ -1038,6 +1098,8 @@ var UI = (function () {
 
   function mode(m) {
     $('cardOD').hidden = (m !== 'route');
+    $('cardFactors').hidden = true;
+    $('cardRoutes').hidden = true;
     $('scTitle').textContent = m === 'walk' ? '走路安全' : '路線安全';
     $('scRadius').textContent = m === 'walk' ? '300m + 500m 範圍' : '整條路線';
     $('lifeTitle').textContent = m === 'walk' ? '適合哪種生活型態？' : '這條路線適合誰？';
@@ -1077,6 +1139,8 @@ var UI = (function () {
   function render(d, m) {
     $('cardEmpty').hidden = true;
     ['cardScore', 'cardLife', 'cardNums', 'cardX'].forEach(function (id) { $(id).hidden = false; });
+    $('cardFactors').hidden = (m !== 'walk' || !d.factors || !d.factors.length);
+    $('cardRoutes').hidden = (m !== 'route' || !d.routes || !d.routes.length);
     $('demoBar').hidden = !d.demo;
     /* 路線模式把長度與時間放到分數卡標題右側，避免與白話說明重複 */
     if (m === 'route' && d.route)
@@ -1118,6 +1182,63 @@ var UI = (function () {
 
     renderLife(d.lifestyle);
     renderX(d.intersections, m);
+    if (m === 'walk') renderFactors(d.factors);
+    if (m === 'route') renderRoutes(d.routes, d.activeRoute || 0);
+  }
+
+  function renderRoutes(routes, active) {
+    var box = $('routeList');
+    box.innerHTML = '';
+    $('routeCount').textContent = routes.length + ' 條';
+    var best = routes.filter(function (r) { return r.route && r.route.recommended; })[0];
+    var shortest = routes.slice().sort(function (a, b) { return a.route.km - b.route.km; })[0];
+    var extraMin = best ? best.route.min - shortest.route.min : 0;
+    var scoreGain = best ? best.score.value - shortest.score.value : 0;
+    $('routeLead').innerHTML = best && best.route.id !== shortest.route.id
+      ? '<div class="routelead">✨ <b>建議改走 ' + best.route.label + '</b><br>' +
+        (extraMin > 0 ? '約多 ' + extraMin + ' 分鐘，' : '時間相近，') + '安全分數提高 ' +
+        scoreGain + ' 分（' + shortest.score.value + ' → ' + best.score.value + '）。</div>'
+      : '<div class="routelead">🧭 <b>最短路線是目前較合適的選擇</b><br>仍可切換其他道路，比較事故風險與行駛時間。</div>';
+    routes.forEach(function (r, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'routeitem' + (i === active ? ' on' : '') + (r.route.recommended ? ' best' : '');
+      b.innerHTML = '<span class="routescore">' + r.score.value + '</span>' +
+        '<span class="routebody"><span class="routename">' + r.route.label +
+        (r.route.recommended ? '　★ 建議' : '') + '</span><span class="routedetail">' +
+        r.route.km + ' km ・ 約 ' + r.route.min + ' 分 ・ 高風險路口 ' + r.route.hiCount + ' 處</span></span>' +
+        '<span class="routepick">' + (i === active ? '顯示中' : '查看 ›') + '</span>';
+      b.addEventListener('click', function () { LH.pickRoute(i); });
+      box.appendChild(b);
+    });
+  }
+
+  function renderFactors(list) {
+    var box = $('factorList');
+    box.innerHTML = '';
+    if (!list || !list.length) return;
+    /* 「主要原因」同時看分數與權重，避免低權重的小項目蓋過真正影響總分的因子。 */
+    var weak = list.map(function (x) {
+      return { item: x, impact: x.weight * Math.max(0, 75 - x.score) };
+    }).filter(function (x) { return x.impact > 0; })
+      .sort(function (a, b) { return b.impact - a.impact; }).slice(0, 2)
+      .map(function (x) { return x.item; });
+    if (!weak.length) weak = list.slice().sort(function (a, b) { return a.score - b.score; }).slice(0, 2);
+    $('factorWhy').innerHTML = '<span aria-hidden="true">🔎</span><span>分數主要受 <strong>' +
+      weak.map(function (x) { return x.icon + ' ' + x.label + ' ' + x.score + ' 分'; }).join('、') +
+      '</strong> 影響。下列指標只根據事故紀錄，不代表人行道、號誌等道路設施的完整狀況。</span>';
+    list.forEach(function (f) {
+      var el = document.createElement('div');
+      el.className = 'factor';
+      var bars = '';
+      for (var i = 1; i <= 10; i++) bars += '<i class="' + (i <= Math.round(f.score / 10) ? 'on ' + f.tone : '') + '"></i>';
+      el.innerHTML = '<div class="factorhead"><span>' + f.icon + '</span><b>' + f.label + '</b>' +
+        '<span class="factorweight">權重 ' + f.weight + '%</span><span class="factorstatus ' + f.tone + '">' +
+        f.status + '</span><span class="factorscore ' + f.tone + '">' + f.score + '</span></div>' +
+        '<div class="factorbar" aria-label="' + f.label + ' ' + f.score + ' 分">' + bars + '</div>' +
+        '<div class="factorreason">' + f.reason + '</div>';
+      box.appendChild(el);
+    });
   }
 
   /* 核心視覺化③：月趨勢條
@@ -1252,6 +1373,11 @@ var UI = (function () {
                   DATA_UNAVAILABLE: '資料載入失敗，請稍後再試。' };
     var msg = (err && err.error && (err.error.message || codes[err.error.code])) ||
               (err && err.message) || '發生未知錯誤';
+    if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
+      msg = location.protocol === 'file:'
+        ? '目前是直接開啟 index.html；請雙擊「啟動.bat」，再使用自動開啟的本機網址。'
+        : '無法連線分析服務；請確認「啟動.bat」視窗仍在執行，然後重新整理頁面。';
+    }
     console.error('[Life House]', msg);
     $('warnText').innerHTML = '<b>' + msg + '</b>';
     $('warn').classList.add('on');

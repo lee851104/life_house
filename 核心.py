@@ -293,20 +293,31 @@ class Data:
         d, i = float(d[0]), int(i[0])
         return (i if limit is None or d <= limit else -1), d
 
-    def shortest_path(self, a, b, limit=ROUTE_LIMIT):
+    def shortest_path(self, a, b, limit=ROUTE_LIMIT, penalties=None):
         """機車路網最短路徑。回傳 (節點序列, 長度公尺)，走不通回傳 None。
 
         基準與查詢一定要共用這支：基準若改用隨機遊走取樣，走出來的是巷弄，
         而 Dijkstra 走的是主幹道——事故幾乎都在主幹道上，兩者每公里事故率
         差一個數量級，所有真實路線都會掉到 1 分。
         """
+        from scipy.sparse import csr_matrix
         from scipy.sparse.csgraph import dijkstra
 
         s = int(self.node_tree.query([a])[1][0])
         t = int(self.node_tree.query([b])[1][0])
         if s == t:
             return None
-        dist, pred = dijkstra(self.graph, directed=True, indices=s,
+        # 候選路線會暫時提高已選道路的成本，以找出真正不同的替代走法；回傳的
+        # 長度仍以原始邊長計算，不能把「避開成本」誤顯示成實際公里數。
+        graph = self.graph
+        if penalties:
+            w = self.r_w.copy()
+            mask = np.isin(self.r_u.astype(np.int64) * len(self.n_xy) + self.r_v,
+                           np.fromiter(penalties, dtype=np.int64))
+            w[mask] *= 3.0
+            graph = csr_matrix((w, (self.r_u, self.r_v)), shape=self.graph.shape)
+
+        dist, pred = dijkstra(graph, directed=True, indices=s,
                              return_predecessors=True, limit=limit)
         if not np.isfinite(dist[t]):
             return None
@@ -317,7 +328,38 @@ class Data:
                 return None
             seq.append(cur)
         seq.reverse()
-        return seq, float(dist[t])
+        # scipy 的 sparse advanced indexing 會回傳 1×n matrix；轉成一維後加總。
+        actual = float(np.asarray(self.graph[seq[:-1], seq[1:]]).ravel().sum())
+        return seq, actual
+
+    def alternative_paths(self, a, b, count=3):
+        """回傳最短路徑及至多兩條明顯不同、合理繞行的候選路線。
+
+        這不是導航引擎的 k-shortest paths 完整實作：本產品目的是比較安全歷史，
+        所以以已選路段的成本懲罰來產生可讀的替代走法，並剔除幾乎重疊或過度繞行
+        的候選，避免把同一條路換個巷口就當成「替代道路」。
+        """
+        first = self.shortest_path(a, b)
+        if first is None:
+            return []
+        paths = [first]
+        n = len(self.n_xy)
+        base_len = first[1]
+
+        for _ in range(max(0, count - 1)):
+            used = set()
+            for seq, _length in paths:
+                used.update(int(u) * n + int(v) for u, v in zip(seq[:-1], seq[1:]))
+            candidate = self.shortest_path(a, b, penalties=used)
+            if candidate is None or candidate[1] > base_len * 1.65:
+                break
+            cedges = set(int(u) * n + int(v) for u, v in zip(candidate[0][:-1], candidate[0][1:]))
+            # 與任一既有候選有超過 72% 的路段相同，對使用者沒有比較價值。
+            if any(len(cedges & set(int(u) * n + int(v) for u, v in zip(seq[:-1], seq[1:]))) /
+                   max(1, len(cedges)) > .72 for seq, _length in paths):
+                break
+            paths.append(candidate)
+        return paths
 
     def band_of(self, km, kind="walk"):
         """曝險落在哪一層。"""
