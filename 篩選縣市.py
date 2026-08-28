@@ -5,7 +5,7 @@
     python 篩選縣市.py              # 預設桃園市
     python 篩選縣市.py 桃園市 新竹縣  # 可指定多個
 
-輸出: 縣市/桃園市_A1_2024-2026.csv、縣市/桃園市_A2_2024-2026.csv
+輸出: 縣市/桃園市_A1_2022-2026.csv、縣市/桃園市_A2_2022-2026.csv
 
 篩選依據是「發生地點」的開頭縣市，不是「處理單位名稱警局層」——
 國道、機場的事故由國道公路警察局／航空警察局處理，用單位篩會漏掉。
@@ -24,7 +24,7 @@ os.makedirs(outdir, exist_ok=True)
 for city in cities:
     for kind in ("A1", "A2"):
         parts = sorted(glob.glob(os.path.join(BASE, "data", kind, f"{kind}_*.csv")))
-        out = os.path.join(outdir, f"{city}_{kind}_2024-2026.csv")
+        out = os.path.join(outdir, f"{city}_{kind}_2022-2026.csv")
         kept = scanned = 0
         units = {}
         with open(out, "w", encoding="utf-8-sig", newline="") as fo:

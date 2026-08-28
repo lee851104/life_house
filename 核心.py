@@ -25,6 +25,7 @@
 import math
 import os
 import sqlite3
+from datetime import date, datetime
 
 import numpy as np
 import yaml
@@ -38,10 +39,15 @@ REF_PATH = os.path.join(BASE, "基準.npz")
 BND_PATH = os.path.join(BASE, "市界.npz")
 
 R_WALK = float(ANALYSIS_CONFIG["walk_radius_m"])
+LOCAL_RANK_GRID = float(ANALYSIS_CONFIG.get("local_rank_grid_m", 200))
 R_ROUTE = float(ANALYSIS_CONFIG["route_buffer_m"])
 R_DENS = R_WALK
 FATAL_W = float(ANALYSIS_CONFIG["fatality_weight"])
-MONTHS = 24
+MONTHS = int(ANALYSIS_CONFIG.get("months", 60))
+RECENCY_WEIGHTS = np.asarray(
+    ANALYSIS_CONFIG.get("recency_weights", [1.0, 0.8, 0.6, 0.4, 0.2]),
+    dtype=np.float64,
+)
 STRATA = int(ANALYSIS_CONFIG["exposure_strata"])
 
 # Dijkstra 搜尋上限（公尺）。桃園東西寬約 50 km，山路繞行後最長的市內路線
@@ -74,7 +80,7 @@ def sev(fat):
 class Data:
     """把索引與路網一次載入記憶體，之後所有查詢都在 numpy / KD-tree 上做。"""
 
-    def __init__(self, need_ref=True):
+    def __init__(self, need_ref=True, load_routes=True):
         from pyproj import Transformer
         from scipy.spatial import cKDTree
 
@@ -86,7 +92,8 @@ class Data:
         self.meta = dict(db.execute("SELECT key, value FROM meta"))
         rows = db.execute(
             "SELECT lat, lon, jlat, jlon, fatalities, injuries, hour, ym, "
-            "       motorway, xid, category, road_type, main_cause, parties, ymd, hms "
+            "       motorway, xid, category, road_type, accident_type, main_cause, "
+            "       parties, ymd, hms "
             "FROM accidents").fetchall()
         xrows = db.execute(
             "SELECT xid, lat, lon, x, y, count, fatalities, injuries, name, cls, motorway "
@@ -95,6 +102,8 @@ class Data:
 
         lat = np.array([r[0] for r in rows])
         lon = np.array([r[1] for r in rows])
+        self.a_lat = lat
+        self.a_lon = lon
         ax, ay = self.fwd.transform(lon, lat)
         self.a_xy = np.column_stack([ax, ay])
         self.a_jlat = np.array([r[2] for r in rows])
@@ -104,9 +113,19 @@ class Data:
         self.a_hour = np.array([r[6] for r in rows], dtype=np.int8)
         self.a_mw = np.array([r[8] for r in rows], dtype=bool)
         self.a_xid = np.array([r[9] for r in rows], dtype=np.int32)
-        self.a_sev = sev(self.a_fat)
         # 文字欄位查詢頻率低，留 list 就好，不必進 numpy
-        self.a_txt = [(r[10], r[11], r[12], r[13], r[14], r[15]) for r in rows]
+        self.a_txt = [(r[10], r[11], r[12], r[13], r[14], r[15], r[16]) for r in rows]
+
+        # 五年事故不等權：距資料截止日越久，對目前環境的代表性越低。
+        # 第 1～5 年依序使用 1.0、0.8、0.6、0.4、0.2；A1 嚴重度再由 sev() 加權。
+        range_to = date.fromisoformat(self.meta["range_to"])
+        age_band = []
+        for _cat, _rtype, _atype, _cause, _parties, ymd, _hms in self.a_txt:
+            occurred = datetime.strptime(ymd, "%Y%m%d").date()
+            age_years = max(0.0, (range_to - occurred).days / 365.25)
+            age_band.append(min(len(RECENCY_WEIGHTS) - 1, int(age_years)))
+        self.a_time_weight = RECENCY_WEIGHTS[np.asarray(age_band, dtype=np.int8)]
+        self.a_sev = sev(self.a_fat) * self.a_time_weight
 
         # 月份 → 0..23
         ym0 = self.meta["range_from"][:7]
@@ -148,18 +167,6 @@ class Data:
         self.x_cnt = np.bincount(self.a_xid[self.ground],
                                  minlength=len(xrows)).astype(np.int32)
 
-        # 只把有地面事故的路口拿來顯示與排名。純國道匝道群集的地面件數是 0，
-        # 會自動被這個條件擋掉，不需要再靠那個不可靠的眾數旗標。
-        self.x_keep = np.flatnonzero(self.x_cnt > 0)
-
-        # 「前 N%」的比較基準。前端文案寫「與相同道路等級路口比較」，所以按
-        # 道路類別分開排序。
-        self.x_cnt_sorted = np.sort(self.x_cnt[self.x_keep])
-        self.x_cnt_by_cls = {}
-        keep_cls = self.x_cls[self.x_keep]
-        for c in set(keep_cls):
-            self.x_cnt_by_cls[c] = np.sort(self.x_cnt[self.x_keep[keep_cls == c]])
-
         self.g_ix = np.flatnonzero(self.ground)      # → 回查 a_txt 用
         self.g_xy = self.a_xy[self.ground]
         self.g_sev = self.a_sev[self.ground]
@@ -170,6 +177,32 @@ class Data:
         self.g_xid = self.a_xid[self.ground]
         self.g_jlat = self.a_jlat[self.ground]
         self.g_jlon = self.a_jlon[self.ground]
+        self.g_lat = self.a_lat[self.ground]
+        self.g_lon = self.a_lon[self.ground]
+        self.g_cat = np.asarray([self.a_txt[i][0] or "" for i in self.g_ix], dtype=object)
+        self.g_atype = np.asarray([self.a_txt[i][2] or "" for i in self.g_ix], dtype=object)
+        self.g_parties = np.asarray([self.a_txt[i][4] or "" for i in self.g_ix], dtype=object)
+        self.g_ped = (self.g_atype == "人與車") | np.fromiter(
+            ("行人" in str(parties) for parties in self.g_parties),
+            dtype=bool, count=len(self.g_parties))
+        self.g_a1ped = self.g_ped & np.fromiter(
+            (str(cat).startswith("A1") for cat in self.g_cat), dtype=bool, count=len(self.g_cat))
+
+        # 行人事故負擔使用五年時間衰減後的嚴重度：A2 基礎值 1，A1 通常為 5。
+        # 只拿來做同一個 500m 生活圈內的路口相對排序，不宣稱為事故發生機率。
+        self.x_ped_cnt = np.bincount(self.g_xid[self.g_ped], minlength=len(xrows)).astype(np.int32)
+        self.x_a1ped_cnt = np.bincount(self.g_xid[self.g_a1ped], minlength=len(xrows)).astype(np.int32)
+        self.x_ped_weight = np.bincount(
+            self.g_xid[self.g_ped], weights=self.g_sev[self.g_ped], minlength=len(xrows))
+
+        # 第一層地圖只顯示至少有一件地面行人事故的聚合位置；全部事故件數仍保留
+        # 在 x_cnt，供第二層計算「行人事故占此路口全部事故的比例」。
+        self.x_keep = np.flatnonzero(self.x_ped_cnt > 0)
+        self.x_cnt_sorted = np.sort(self.x_ped_cnt[self.x_keep])
+        self.x_cnt_by_cls = {}
+        keep_cls = self.x_cls[self.x_keep]
+        for c in set(keep_cls):
+            self.x_cnt_by_cls[c] = np.sort(self.x_ped_cnt[self.x_keep[keep_cls == c]])
         self.acc_tree = cKDTree(self.g_xy)
 
         self.x_tree = cKDTree(self.x_xy[self.x_keep])
@@ -180,35 +213,39 @@ class Data:
         self.w_len = net["walk_len"].astype(np.float64)
         self.walk_tree = cKDTree(self.w_mid)
 
-        self.n_xy = net["nodes"].astype(np.float64)
-        self.r_u = net["ride_u"]
-        self.r_v = net["ride_v"]
-        self.r_w = net["ride_w"].astype(np.float64)
-        self.node_tree = cKDTree(self.n_xy)
+        # 線上服務目前只提供走路安全，不載入機車圖與其 KD-tree／稀疏矩陣，
+        # 避免 Render 免費方案為已移除的功能保留大量記憶體。建立基準時仍使用
+        # 預設值 True，以保留離線重建舊資料的能力。
+        if load_routes:
+            self.n_xy = net["nodes"].astype(np.float64)
+            self.r_u = net["ride_u"]
+            self.r_v = net["ride_v"]
+            self.r_w = net["ride_w"].astype(np.float64)
+            self.node_tree = cKDTree(self.n_xy)
 
-        from scipy.sparse import csr_matrix
-        n = len(self.n_xy)
-        self.graph = csr_matrix((self.r_w, (self.r_u, self.r_v)), shape=(n, n))
+            from scipy.sparse import csr_matrix
+            n = len(self.n_xy)
+            self.graph = csr_matrix((self.r_w, (self.r_u, self.r_v)), shape=(n, n))
 
-        # 機車有向邊 → 無向去重，用來量路網密度（同一段路不能算兩次）
-        uv = np.sort(np.column_stack([self.r_u, self.r_v]), axis=1)
-        _, uq = np.unique(uv, axis=0, return_index=True)
-        self.e_u = self.r_u[uq]
-        self.e_v = self.r_v[uq]
-        self.e_mid = (self.n_xy[self.e_u] + self.n_xy[self.e_v]) / 2.0
-        self.e_len = self.r_w[uq]
-        self.edge_tree = cKDTree(self.e_mid)
+            # 機車有向邊 → 無向去重，用來量路網密度（同一段路不能算兩次）
+            uv = np.sort(np.column_stack([self.r_u, self.r_v]), axis=1)
+            _, uq = np.unique(uv, axis=0, return_index=True)
+            self.e_u = self.r_u[uq]
+            self.e_v = self.r_v[uq]
+            self.e_mid = (self.n_xy[self.e_u] + self.n_xy[self.e_v]) / 2.0
+            self.e_len = self.r_w[uq]
+            self.edge_tree = cKDTree(self.e_mid)
 
-        # 無向鄰接表（CSR 形式），供基準取樣時做隨機路徑遊走
-        n2 = len(self.n_xy)
-        src = np.concatenate([self.e_u, self.e_v])
-        dst = np.concatenate([self.e_v, self.e_u])
-        wgt = np.concatenate([self.e_len, self.e_len])
-        order = np.argsort(src, kind="stable")
-        self.adj_dst = dst[order]
-        self.adj_w = wgt[order]
-        self.adj_ptr = np.zeros(n2 + 1, dtype=np.int64)
-        np.cumsum(np.bincount(src, minlength=n2), out=self.adj_ptr[1:])
+            # 無向鄰接表（CSR 形式），供基準取樣時做隨機路徑遊走
+            n2 = len(self.n_xy)
+            src = np.concatenate([self.e_u, self.e_v])
+            dst = np.concatenate([self.e_v, self.e_u])
+            wgt = np.concatenate([self.e_len, self.e_len])
+            order = np.argsort(src, kind="stable")
+            self.adj_dst = dst[order]
+            self.adj_w = wgt[order]
+            self.adj_ptr = np.zeros(n2 + 1, dtype=np.int64)
+            np.cumsum(np.bincount(src, minlength=n2), out=self.adj_ptr[1:])
 
         # ---- 市界（基準取樣範圍 + 服務範圍檢核）----
         self.ring = None
@@ -224,7 +261,7 @@ class Data:
         if need_ref and os.path.exists(REF_PATH):
             r = np.load(REF_PATH)
             self.ref = {}
-            for kind in ("walk", "ride"):
+            for kind in (("walk", "ride") if load_routes else ("walk",)):
                 off = r["%s_off" % kind]
                 vals = r["%s_vals" % kind]
                 self.ref[kind] = {
@@ -264,10 +301,14 @@ class Data:
         k = 1.0 - (d / r) ** 2
         return float((self.w_len[idx] * k).sum() / 1000.0)
 
-    def walk_risk(self, x, y, r=R_WALK):
-        """回傳 (risk, 圈內事故數, 核加權嚴重度, 有效路網km, 事故索引)。"""
+    def walk_risk(self, x, y, r=R_WALK, accident_mask=None):
+        """回傳行人事故的 (risk, 件數, 加權嚴重度, 有效路網km, 索引)。"""
         idx = self.acc_tree.query_ball_point([x, y], r)
         idx = np.asarray(idx, dtype=np.int64)
+        if idx.size:
+            idx = idx[self.g_ped[idx]]
+        if accident_mask is not None and idx.size:
+            idx = idx[accident_mask[idx]]
         if idx.size:
             d = np.hypot(self.g_xy[idx, 0] - x, self.g_xy[idx, 1] - y)
             k = 1.0 - (d / r) ** 2
@@ -277,6 +318,68 @@ class Data:
         km = self.exposure(x, y, r)
         risk = wsum / max(km, 0.15)
         return risk, int(idx.size), wsum, km, idx
+
+    def local_walk_percentile(self, x, y, r=R_WALK, step=LOCAL_RANK_GRID,
+                              accident_mask=None, prior_scale=1.0):
+        """選定點在附近固定網格中的安全百分位。
+
+        所有候選點使用選定中心所屬曝險層的同一個先驗做小樣本收縮，避免相鄰
+        格點只因跨到另一個全市曝險層就產生名次跳動。風險越低越安全；同風險
+        取名次區間中點，所以同一社區可以合理地顯示相同百分位。
+        """
+        if self.ref is None:
+            return 50, 0, []
+
+        xs = np.arange(math.ceil((x - r) / step) * step,
+                       math.floor((x + r) / step) * step + step, step)
+        ys = np.arange(math.ceil((y - r) / step) * step,
+                       math.floor((y + r) / step) * step + step, step)
+        gx, gy = np.meshgrid(xs, ys)
+        pts = np.column_stack([gx.ravel(), gy.ravel()])
+        pts = pts[np.hypot(pts[:, 0] - x, pts[:, 1] - y) <= r]
+
+        if self.poly is not None:
+            from shapely.geometry import Point
+            pts = np.asarray([p for p in pts if self.poly.contains(Point(*p))])
+
+        _risk, _count, center_wsum, center_km, _idx = self.walk_risk(
+            x, y, r, accident_mask=accident_mask)
+        if center_km < MIN_KM:
+            return 50, 0, []
+        common_med = (float(self.ref["walk"]["med"][self.band_of(center_km, "walk")]) *
+                      max(0.0, min(1.0, float(prior_scale))))
+
+        samples = []
+        for px, py in pts:
+            _raw, _n, wsum, km, _gidx = self.walk_risk(
+                px, py, r, accident_mask=accident_mask)
+            if km >= MIN_KM:
+                adjusted = ((wsum + SHRINK_KM_WALK * common_med) /
+                            (km + SHRINK_KM_WALK))
+                samples.append((float(px), float(py), float(adjusted)))
+        if not samples:
+            return 50, 0, []
+
+        arr = np.sort(np.asarray([sample[2] for sample in samples], dtype=np.float64))
+        center_risk = ((center_wsum + SHRINK_KM_WALK * common_med) /
+                       (center_km + SHRINK_KM_WALK))
+
+        def safety_percentile(value):
+            lo = float(np.searchsorted(arr, value, side="left"))
+            hi = float(np.searchsorted(arr, value, side="right"))
+            pct = 100.0 * (1.0 - (lo + hi) / (2.0 * len(arr)))
+            return int(max(1, min(99, round(pct))))
+
+        regions = []
+        for px, py, adjusted in samples:
+            lat, lon = self.to_ll(px, py)
+            regions.append({
+                "lat": round(float(lat), 7),
+                "lon": round(float(lon), 7),
+                "safety_percentile": safety_percentile(adjusted),
+                "distance_m": int(round(math.hypot(px - x, py - y))),
+            })
+        return safety_percentile(center_risk), int(len(arr)), regions
 
     def ride_km(self, x, y, r=R_DENS):
         """半徑內的機車路網長度（km），用來判斷路線經過的是市區還是鄉道。"""

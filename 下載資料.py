@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""從 data.gov.tw 下載 2024–2026 (民國113–115) 年 A1 / A2 道路交通事故資料。
+"""從 data.gov.tw 下載 2021-07～2026-06 五年窗所需的 A1 / A2 道路交通事故資料。
 
 用法:
     python 下載資料.py
@@ -30,6 +30,8 @@ UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.3
 
 # (檔名, dataset GUID, resource GUID)
 YEAR_ZIPS = [
+    ("111_traffic_accident.zip", "E52FB959-55BD-4D31-892C-21C87041FC87", "B54126E8-2DE3-4C41-8A64-8FCDF66DF0D9"),
+    ("112_traffic_accident.zip", "E68DFD97-92B3-4A78-A447-87F1390B54B0", "AD4D5B48-4954-403A-827F-B363DBD98C91"),
     ("113_traffic_accident.zip", "CCAD7AA8-5139-4066-8BE3-D6CC3154C137", "0A260239-9958-4046-8834-E68E5EC38406"),
     ("114_traffic_accident.zip", "FCD9C2D4-CB71-4EAA-AA4C-B088E5FE3157", "EF9B9192-7E4D-4E48-BF8A-AA3D4B298788"),
 ]
@@ -41,6 +43,11 @@ A2_LIVE = {                     # 民國115年 分月 ZIP
     "05": "B42BC1F9-4628-44EC-8DBB-9ADB252A8B90", "06": "D21D335D-3B93-4A03-BE08-AC1F86A185AF",
     "07": "FDCEB5F4-C80A-4337-977F-4AF8395590BB", "08": "E8F49F1E-D599-4029-A2AC-862086A7E1ED",
 }
+LEGACY_2021 = [
+    ("A1_2021.csv", "A1", "A9F35ABD-0826-4403-800D-D4ACDC1A151A"),
+    ("A2_2021_07-12.csv", "A2", "AC183E22-B5A1-489E-AAD7-6A4B7795E61A"),
+]
+LEGACY_DS = "67781E29-8AAD-46A9-A2C8-C3F339592C27"
 SKIP = {"file.csv", "manifest.csv", "schema-file.csv"}
 
 
@@ -100,7 +107,13 @@ if __name__ == "__main__":
     for d in (RAW, A1D, A2D):
         os.makedirs(d, exist_ok=True)
 
-    for name, ds, res in YEAR_ZIPS:                          # 2024 / 2025 全年 A1+A2
+    for name, kind, res in LEGACY_2021:                     # 五年窗所需的 2021-07～12
+        src = download(name, LEGACY_DS, res)
+        dst = os.path.join(A1D if kind == "A1" else A2D, name)
+        shutil.copyfile(src, dst)
+        print(f"     {name} -> {os.path.relpath(dst, BASE)}")
+
+    for name, ds, res in YEAR_ZIPS:                          # 2022–2025 全年 A1+A2
         extract(download(name, ds, res), 1911 + int(name[:3]))
 
     name, ds, res = A1_LIVE                                  # 2026 A1

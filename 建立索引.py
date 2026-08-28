@@ -2,7 +2,7 @@
 """建立事故索引：桃園市 A1/A2 CSV → 事故索引.db
 
 產出（SQLite）
-  accidents      逐件事故。座標同時存真實值與 ±25m 決定性偏移值
+  accidents      逐件事故。資料源已去識別化，保留公開的原始座標
   intersections  事故聚合成的「路口」（25m 網格 → 45m 貪婪聚合）
   acc_rt / x_rt  R-tree 空間索引，讓半徑查詢不用全表掃描
   meta           期間、筆數、資料來源
@@ -11,7 +11,6 @@
     python 建立索引.py
 """
 import csv
-import hashlib
 import math
 import os
 import re
@@ -21,20 +20,23 @@ import time
 from collections import Counter, defaultdict
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-SRC = [os.path.join(BASE, "縣市", "桃園市_%s_2024-2026.csv" % k) for k in ("A1", "A2")]
+SRC = [os.path.join(BASE, "縣市", "桃園市_%s_2022-2026.csv" % k) for k in ("A1", "A2")]
+LEGACY_2021 = [
+    ("A1", os.path.join(BASE, "data", "A1", "A1_2021.csv")),
+    ("A2", os.path.join(BASE, "data", "A2", "A2_2021_07-12.csv")),
+]
 DB = os.path.join(BASE, "事故索引.db")
 
 # 期間必須與 index.html 的 CFG.range 一致
-FROM, TO = "20240701", "20260630"
+FROM, TO = "20210701", "20260630"
 
 # 欄位索引（51 欄固定格式）
 C_YMD, C_HMS, C_CAT, C_LOC, C_CLS = 2, 3, 4, 6, 9
-C_RTYPE, C_CAUSE, C_DU, C_SEQ, C_VEH = 12, 31, 32, 33, 35
+C_RTYPE, C_ATYPE, C_CAUSE, C_DU, C_SEQ, C_VEH = 12, 28, 31, 32, 33, 35
 C_LON, C_LAT = 49, 50
 
 GRID = 25.0        # 網格邊長（公尺）
 MERGE = 45.0       # 聚合半徑（公尺）——約一個路口的尺度
-JITTER = 25.0      # 個別事故點的隱私偏移上限（公尺）
 
 # 行人與普通機車都到不了的路段。不排除的話，桃園事故最多的兩個「路口」
 # 會是國道南向的匝道，走路安全分數就被高速公路的事故拉低，講不通。
@@ -73,6 +75,23 @@ def parse_casualty(s):
         return 0, 0
 
 
+def parse_roc_time(value):
+    """'110年07月01日 08時30分00秒' → ('20210701', '083000')。"""
+    m = re.match(r"(\d+)年(\d+)月(\d+)日\s+(\d+)時(\d+)分(?:(\d+)秒)?", value.strip())
+    if not m:
+        return "", ""
+    y, mo, day, hour, minute, second = m.groups()
+    return ("%04d%02d%02d" % (int(y) + 1911, int(mo), int(day)),
+            "%02d%02d%02d" % (int(hour), int(minute), int(second or 0)))
+
+
+def is_pedestrian_accident(a):
+    """只留下涉及行人的事故，並依需求忽略平交道事故。"""
+    pedestrian = a.get("atype") == "人與車" or any("行人" in v for v in a.get("veh", []))
+    crossing = "平交道" in (a.get("atype") or "") or "平交道" in (a.get("rtype") or "")
+    return pedestrian and not crossing
+
+
 def read_accidents():
     """把逐「當事者」的列 group 成逐「事故」。
 
@@ -105,32 +124,50 @@ def read_accidents():
                     a = acc[key] = {
                         "ymd": r[C_YMD], "hms": r[C_HMS], "cat": r[C_CAT],
                         "lat": lat, "lon": lon, "loc": r[C_LOC],
-                        "cls": r[C_CLS], "rtype": r[C_RTYPE], "cause": r[C_CAUSE],
+                        "cls": r[C_CLS], "rtype": r[C_RTYPE],
+                        "atype": r[C_ATYPE], "cause": r[C_CAUSE],
                         "dead": dead, "hurt": hurt, "veh": [],
                     }
                 if r[C_SEQ] == "1":       # 第1當事者的列才帶事故層級屬性
                     dead, hurt = parse_casualty(r[C_DU])
                     a.update(cat=r[C_CAT], loc=r[C_LOC], cls=r[C_CLS],
-                             rtype=r[C_RTYPE], cause=r[C_CAUSE],
+                             rtype=r[C_RTYPE], atype=r[C_ATYPE], cause=r[C_CAUSE],
                              dead=dead, hurt=hurt)
                 v = r[C_VEH].strip()
                 if v and v not in a["veh"]:
                     a["veh"].append(v)
-    print("  讀入 {:,} 列當事者 → {:,} 件事故".format(rows, len(acc)))
-    return list(acc.values())
+    # 2021 年歷史檔只有六欄，沒有事故型態與肇因；以公開的車種欄是否包含
+    # 「行人」辨識。這批資料只補足五年窗的 2021-07～12。
+    for category, path in LEGACY_2021:
+        if not os.path.exists(path):
+            sys.exit("找不到 %s\n請先執行： python 下載資料.py" % path)
+        with open(path, encoding="utf-8-sig", newline="") as f:
+            rd = csv.reader(f)
+            next(rd)
+            for r in rd:
+                if len(r) < 6 or not r[1].startswith("桃園市"):
+                    continue
+                ymd, hms = parse_roc_time(r[0])
+                if not (FROM <= ymd <= TO) or "國道" in r[1]:
+                    continue
+                try:
+                    lon, lat = float(r[4]), float(r[5])
+                except ValueError:
+                    continue
+                dead, hurt = parse_casualty(r[2])
+                key = (ymd, hms, r[4], r[5])
+                acc[key] = {
+                    "ymd": ymd, "hms": hms, "cat": category,
+                    "lat": lat, "lon": lon, "loc": r[1], "cls": "",
+                    "rtype": "", "atype": "人與車" if "行人" in r[3] else "", "cause": "",
+                    "dead": dead, "hurt": hurt, "veh": [r[3]],
+                }
 
-
-# ---------------------------------------------------------------- 隱私偏移
-def jitter(a):
-    """決定性偏移：同一件事故每次都得到同一個偏移，但無法反推真實位置。
-
-    前端 popup 寫明「座標已做 ±25m 偏移以保護當事人隱私」，這裡讓那句話成立。
-    """
-    h = hashlib.md5(("%s%s%s%s" % (a["ymd"], a["hms"], a["lon"], a["lat"])).encode()).digest()
-    ang = int.from_bytes(h[:4], "big") / 2 ** 32 * 2 * math.pi
-    rad = math.sqrt(int.from_bytes(h[4:8], "big") / 2 ** 32) * JITTER
-    return (a["lat"] + rad * math.sin(ang) / 110540.0,
-            a["lon"] + rad * math.cos(ang) / (111320.0 * math.cos(math.radians(a["lat"]))))
+    all_accidents = list(acc.values())
+    pedestrian = [a for a in all_accidents if is_pedestrian_accident(a)]
+    print("  讀入 {:,} 列當事者 → {:,} 件事故，其中行人事故 {:,} 件".format(
+        rows, len(acc), len(pedestrian)))
+    return all_accidents
 
 
 # ---------------------------------------------------------------- 路口命名
@@ -231,8 +268,8 @@ def main():
       CREATE TABLE accidents(
         id INTEGER PRIMARY KEY, xid INTEGER, ymd TEXT, hms TEXT, hour INTEGER,
         ym TEXT, category TEXT, lat REAL, lon REAL, jlat REAL, jlon REAL,
-        fatalities INTEGER, injuries INTEGER, road_type TEXT, main_cause TEXT,
-        parties TEXT, loc TEXT, cls TEXT, motorway INTEGER);
+        fatalities INTEGER, injuries INTEGER, road_type TEXT, accident_type TEXT,
+        main_cause TEXT, parties TEXT, loc TEXT, cls TEXT, motorway INTEGER);
       CREATE TABLE intersections(
         xid INTEGER PRIMARY KEY, lat REAL, lon REAL, x REAL, y REAL,
         count INTEGER, fatalities INTEGER, injuries INTEGER, name TEXT, cls TEXT,
@@ -260,17 +297,17 @@ def main():
                       name_cluster([m["loc"] for m in ms]), cls_mode, xmw))
         xrt.append((xid, cx, cx, cy, cy))
         for m in ms:
-            jlat, jlon = jitter(m)
+            jlat, jlon = m["lat"], m["lon"]
             aid = len(arows)
             mw = 1 if is_motorway(m) else 0
             arows.append((aid, xid, m["ymd"], m["hms"], int(m["hms"][:2] or 0),
                           "%s-%s" % (m["ymd"][:4], m["ymd"][4:6]), m["cat"],
                           m["lat"], m["lon"], jlat, jlon, m["dead"], m["hurt"],
-                          m["rtype"], m["cause"], "、".join(m["veh"][:4]), m["loc"],
+                          m["rtype"], m["atype"], m["cause"], "、".join(m["veh"][:4]), m["loc"],
                           m["cls"], mw))
             art.append((aid, m["x"], m["x"], m["y"], m["y"]))
 
-    db.executemany("INSERT INTO accidents VALUES(" + ",".join("?" * 19) + ")", arows)
+    db.executemany("INSERT INTO accidents VALUES(" + ",".join("?" * 20) + ")", arows)
     db.executemany("INSERT INTO intersections VALUES(" + ",".join("?" * 11) + ")", xrows)
     db.executemany("INSERT INTO acc_rt VALUES(?,?,?,?,?)", art)
     db.executemany("INSERT INTO x_rt VALUES(?,?,?,?,?)", xrt)
@@ -281,11 +318,11 @@ def main():
       CREATE INDEX i_x_mw   ON intersections(motorway);
     """)
     db.executemany("INSERT INTO meta VALUES(?,?)", [
-        ("range_from", "2024-07-01"), ("range_to", "2026-06-30"),
+        ("range_from", "2021-07-01"), ("range_to", "2026-06-30"),
         ("accidents", str(len(arows))), ("intersections", str(len(xrows))),
         ("fatalities", str(sum(r[11] for r in arows))),
         ("injuries", str(sum(r[12] for r in arows))),
-        ("grid_m", str(GRID)), ("merge_m", str(MERGE)), ("jitter_m", str(JITTER)),
+        ("grid_m", str(GRID)), ("merge_m", str(MERGE)), ("jitter_m", "0"),
         ("source", "內政部警政署 A1/A2 交通事故資料（data.gov.tw）"),
         ("built_at", time.strftime("%Y-%m-%d %H:%M:%S")),
     ])

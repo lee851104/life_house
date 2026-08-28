@@ -87,7 +87,7 @@ def stratify(key, wsum, km, kind, n_band=core.STRATA):
 def build_walk(D):
     pts = core.grid_points(np.load(core.NET_PATH)["bbox"], GRID, D.fwd)
     pts = pts[mask_inside(D.ring, pts)]
-    print("  市界內 %d 格（%.0f km²）" % (len(pts), len(pts) * GRID ** 2 / 1e6))
+    print("  市界內 %d 格（%.0f km2）" % (len(pts), len(pts) * GRID ** 2 / 1e6))
 
     t0 = time.time()
     exp, wsum_l = [], []
@@ -98,6 +98,7 @@ def build_walk(D):
         idx = D.acc_tree.query_ball_point([x, y], core.R_WALK)
         if idx:
             idx = np.asarray(idx, dtype=np.int64)
+            idx = idx[D.g_ped[idx]]
             d = np.hypot(D.g_xy[idx, 0] - x, D.g_xy[idx, 1] - y)
             w = float((D.g_sev[idx] * (1.0 - (d / core.R_WALK) ** 2)).sum())
         else:
@@ -149,6 +150,7 @@ def build_ride(D):
         # 分層鍵的算法與 api.analyze_route 完全一致
         probe = pts[::10] if len(pts) > 10 else pts
         dens_l.append(float(np.mean([D.ride_km(px, py) for px, py in probe])))
+        idx = idx[D.g_ped[idx]]
         wsum_l.append(float(D.g_sev[idx].sum()))
         km_l.append(length_m / 1000.0)
         if len(km_l) % 250 == 0:
@@ -171,7 +173,7 @@ def flatten(bands):
 
 if __name__ == "__main__":
     print("載入索引與路網…")
-    D = core.Data(need_ref=False)
+    D = core.Data(need_ref=False, load_routes=False)
     if D.ring is None:
         raise SystemExit("找不到 市界.npz，請先執行： python 建立市界.py")
     print("  事故 %s 件 ‧ 路口 %s 處 ‧ 步行網 %.0f km"
@@ -179,17 +181,11 @@ if __name__ == "__main__":
 
     print("建立 walk 基準…")
     w_edges, w_bands, w_med = build_walk(D)
-    print("建立 ride 基準…")
-    r_edges, r_bands, r_med = build_ride(D)
-
     w_vals, w_off = flatten(w_bands)
-    r_vals, r_off = flatten(r_bands)
     np.savez_compressed(
         OUT,
         walk_edges=w_edges, walk_vals=w_vals, walk_off=w_off,
         walk_med=np.asarray(w_med),
-        ride_edges=r_edges, ride_vals=r_vals, ride_off=r_off,
-        ride_med=np.asarray(r_med),
-        grid_m=GRID, pair_km=np.asarray(PAIR_KM), strata=core.STRATA)
+        grid_m=GRID, strata=core.STRATA)
     print("\n完成 %s  %.1f MB" % (os.path.relpath(OUT, BASE),
                                   os.path.getsize(OUT) / 1048576))

@@ -1,7 +1,7 @@
 [project]
 name = "life-house"
 version = "0.1.0"
-description = "Taoyuan road-safety index for homes and motorcycle routes"
+description = "Taoyuan walking-safety index for residential areas"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

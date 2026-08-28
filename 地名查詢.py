@@ -31,7 +31,6 @@ _BARE = {d[:-1]: d for d in DISTRICTS}
 _BARE_RE = re.compile("^(%s)(?=.)" % "|".join(sorted(_BARE, key=len, reverse=True)))
 
 KIND_W = {"poi": 8.0, "road": 4.0, "x": 0.0}   # 同分時 POI 比路名更像「目的地」
-SNAP_MAX = 400.0        # 與 核心.py 一致：離機車路網這麼遠就不是可用的起訖點
 
 
 class Geo:
@@ -200,8 +199,6 @@ class Geo:
             # 罰得夠重才壓得住高知名度的無關結果；真的猜錯時，另一個「整串
             # 不剝」的解讀不受罰，會接手。
             s += 6.0 if row["district"] == want_district else -25.0
-        if row["snap"] > SNAP_MAX:         # 選了也不能當起訖點，往後排
-            s -= 25.0
         if near:                           # 離目前地圖中心近的優先
             d = math.hypot(row["x"] - near[0], row["y"] - near[1]) / 1000.0
             s += max(0.0, 8.0 - d * 0.4)
@@ -247,8 +244,6 @@ class Geo:
             "lat": round(lat if lat is not None else r["lat"], 6),
             "lon": round(lon if lon is not None else r["lon"], 6),
             "address": "桃園市%s%s" % (r["district"] or "", name),
-            # 前端要在下拉選單就標示，不要等使用者選了才被後端擋下來
-            "routable": bool(r["snap"] <= SNAP_MAX),
             "exact": bool(exact),
         }
 

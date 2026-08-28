@@ -1,0 +1,162 @@
+{
+  "period": {
+    "from": "2021-07-01",
+    "to": "2026-06-30",
+    "months": 60
+  },
+  "method": {
+    "scope": "桃園市、涉及行人的 A1/A2 事故",
+    "radius_m": 500,
+    "grid_m": 200,
+    "recency_weights_by_age_year": [
+      1.0,
+      0.8,
+      0.6,
+      0.4,
+      0.2
+    ],
+    "A1_fatal_multiplier": 5.0,
+    "A2_injury_multiplier": 1.0
+  },
+  "events": {
+    "five_year": 11711,
+    "two_year": 4491,
+    "unique_public_coordinates_five_year": 10348,
+    "by_year": {
+      "2021": {
+        "period": "07-12",
+        "pedestrian_accidents": 1109,
+        "A1_fatal": 14,
+        "A2_injury": 1095
+      },
+      "2022": {
+        "period": "01-12",
+        "pedestrian_accidents": 2509,
+        "A1_fatal": 24,
+        "A2_injury": 2485
+      },
+      "2023": {
+        "period": "01-12",
+        "pedestrian_accidents": 2460,
+        "A1_fatal": 32,
+        "A2_injury": 2428
+      },
+      "2024": {
+        "period": "01-12",
+        "pedestrian_accidents": 2290,
+        "A1_fatal": 22,
+        "A2_injury": 2268
+      },
+      "2025": {
+        "period": "01-12",
+        "pedestrian_accidents": 2275,
+        "A1_fatal": 27,
+        "A2_injury": 2248
+      },
+      "2026": {
+        "period": "01-06",
+        "pedestrian_accidents": 1068,
+        "A1_fatal": 9,
+        "A2_injury": 1059
+      }
+    }
+  },
+  "grid_comparison": {
+    "valid_200m_cells": 25471,
+    "two_year_raw_count": {
+      "zero_percent": 58.9,
+      "at_most_2_percent": 78.2,
+      "q10_q25_q50_q75_q90_q95": [
+        0.0,
+        0.0,
+        0.0,
+        2.0,
+        9.0,
+        20.0
+      ],
+      "max": 143.0
+    },
+    "five_year_raw_count": {
+      "zero_percent": 46.3,
+      "at_most_2_percent": 66.5,
+      "q10_q25_q50_q75_q90_q95": [
+        0.0,
+        0.0,
+        1.0,
+        5.0,
+        23.0,
+        50.0
+      ],
+      "max": 385.0
+    },
+    "five_year_recency_severity_burden": {
+      "zero_percent": 46.3,
+      "at_most_2_percent": 78.7,
+      "q10_q25_q50_q75_q90_q95": [
+        0.0,
+        0.0,
+        0.1,
+        1.5,
+        7.0,
+        15.8
+      ],
+      "max": 114.8
+    }
+  },
+  "sample_locations": {
+    "桃園車站": {
+      "two_year_count": 83,
+      "five_year_count": 254,
+      "two_year_weighted_burden": 48.8,
+      "five_year_weighted_burden": 80.4,
+      "two_year_local_safety_percentile": 39,
+      "five_year_local_safety_percentile": 34,
+      "local_candidate_cells": 19
+    },
+    "中壢車站": {
+      "two_year_count": 104,
+      "five_year_count": 257,
+      "two_year_weighted_burden": 56.6,
+      "five_year_weighted_burden": 84.8,
+      "two_year_local_safety_percentile": 31,
+      "five_year_local_safety_percentile": 31,
+      "local_candidate_cells": 21
+    },
+    "中原大學": {
+      "two_year_count": 67,
+      "five_year_count": 189,
+      "two_year_weighted_burden": 36.4,
+      "five_year_weighted_burden": 59.7,
+      "two_year_local_safety_percentile": 41,
+      "five_year_local_safety_percentile": 41,
+      "local_candidate_cells": 16
+    },
+    "青埔": {
+      "two_year_count": 15,
+      "five_year_count": 30,
+      "two_year_weighted_burden": 9.4,
+      "five_year_weighted_burden": 11.3,
+      "two_year_local_safety_percentile": 24,
+      "five_year_local_safety_percentile": 24,
+      "local_candidate_cells": 19
+    },
+    "南崁": {
+      "two_year_count": 12,
+      "five_year_count": 38,
+      "two_year_weighted_burden": 7.2,
+      "five_year_weighted_burden": 11.6,
+      "two_year_local_safety_percentile": 29,
+      "five_year_local_safety_percentile": 29,
+      "local_candidate_cells": 19
+    },
+    "八德": {
+      "two_year_count": 28,
+      "five_year_count": 68,
+      "two_year_weighted_burden": 21.6,
+      "five_year_weighted_burden": 29.6,
+      "two_year_local_safety_percentile": 7,
+      "five_year_local_safety_percentile": 7,
+      "local_candidate_cells": 21
+    }
+  }
+}
