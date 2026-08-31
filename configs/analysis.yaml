@@ -6,17 +6,10 @@ analysis:
   months: 60
   walk_radius_m: 500
   local_rank_grid_m: 200
-  route_buffer_m: 40
-  # Render Free（512 MB）模式：限制最長通勤距離與候選數，控制路徑搜尋尖峰記憶體。
-  route_limit_m: 30000
-  route_alternatives: 1
-  route_query_workers: 1
-  snap_max_m: 400
   # A2 基礎值 1；A1 通常死亡 1 人，因此總嚴重度為 1 + 4 = 5。
   fatality_weight: 4
   # 距資料截止日的第 1～5 年時間衰減權重。
   recency_weights: [1.0, 0.8, 0.6, 0.4, 0.2]
   exposure_strata: 8
   walk_shrinkage_km: 1.0
-  ride_shrinkage_km: 0.5
   minimum_walk_network_km: 0.8

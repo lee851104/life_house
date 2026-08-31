@@ -244,7 +244,7 @@ def compare_centers(D: core.Data, alt_ref: dict[str, object]) -> None:
 
 def main() -> None:
     print("Loading walking data...")
-    D = core.Data(load_routes=False)
+    D = core.Data()
     benchmark_local(D, "official 250m baseline")
     alt_ref = build_200m(D)
     compare_centers(D, alt_ref)

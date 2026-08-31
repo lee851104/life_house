@@ -40,8 +40,6 @@ BND_PATH = os.path.join(BASE, "市界.npz")
 
 R_WALK = float(ANALYSIS_CONFIG["walk_radius_m"])
 LOCAL_RANK_GRID = float(ANALYSIS_CONFIG.get("local_rank_grid_m", 200))
-R_ROUTE = float(ANALYSIS_CONFIG["route_buffer_m"])
-R_DENS = R_WALK
 FATAL_W = float(ANALYSIS_CONFIG["fatality_weight"])
 MONTHS = int(ANALYSIS_CONFIG.get("months", 60))
 RECENCY_WEIGHTS = np.asarray(
@@ -50,25 +48,12 @@ RECENCY_WEIGHTS = np.asarray(
 )
 STRATA = int(ANALYSIS_CONFIG["exposure_strata"])
 
-# Dijkstra 搜尋上限（公尺）。桃園東西寬約 50 km，山路繞行後最長的市內路線
-# 實測 63.5 km（南崁→巴陵），舊值 25 km 會把它判成「找不到可行路線」。
-# 放寬幾乎不花錢：25 km→100 km 的單次查詢是 0.045s→0.063s。留一個上限只是
-# 當作失控保險。
-ROUTE_LIMIT = float(ANALYSIS_CONFIG["route_limit_m"])
-ROUTE_ALTERNATIVES = int(ANALYSIS_CONFIG["route_alternatives"])
-# 起訖點離最近機車路網節點的上限（公尺）。山區有大片沒有 OSM 道路的區域，
-# 不設上限的話使用者在復興區點兩個相距 2 km 的點，會被吸到 2–3 km 外的
-# 公路上，回傳一條跟兩支圖釘完全對不上的路線——而且畫在地圖上像真的。
-# 400 m 是距離分布的斷層：市界內隨機點 p75=172 m、p90=1082 m。
-SNAP_MAX = float(ANALYSIS_CONFIG["snap_max_m"])
-
 # 收縮的「虛擬觀測量」，單位 km。
 #   adj = (事故加權 + K0 × 同層中位風險) / (路網km + K0)
 # 用路網長度而不是事故件數當證據量：件數當權重時，risk=0 也會被硬拉離 0
 # （adj = K0·med/(n+K0) 恆大於 0），於是「真的很安全」的地方永遠拿不到高分，
 # 80 分以上的等第形同虛設。
 SHRINK_KM_WALK = float(ANALYSIS_CONFIG["walk_shrinkage_km"])
-SHRINK_KM_RIDE = float(ANALYSIS_CONFIG["ride_shrinkage_km"])
 MIN_KM = float(ANALYSIS_CONFIG["minimum_walk_network_km"])
 
 
@@ -80,7 +65,7 @@ def sev(fat):
 class Data:
     """把索引與路網一次載入記憶體，之後所有查詢都在 numpy / KD-tree 上做。"""
 
-    def __init__(self, need_ref=True, load_routes=True):
+    def __init__(self, need_ref=True):
         from pyproj import Transformer
         from scipy.spatial import cKDTree
 
@@ -213,40 +198,6 @@ class Data:
         self.w_len = net["walk_len"].astype(np.float64)
         self.walk_tree = cKDTree(self.w_mid)
 
-        # 線上服務目前只提供走路安全，不載入機車圖與其 KD-tree／稀疏矩陣，
-        # 避免 Render 免費方案為已移除的功能保留大量記憶體。建立基準時仍使用
-        # 預設值 True，以保留離線重建舊資料的能力。
-        if load_routes:
-            self.n_xy = net["nodes"].astype(np.float64)
-            self.r_u = net["ride_u"]
-            self.r_v = net["ride_v"]
-            self.r_w = net["ride_w"].astype(np.float64)
-            self.node_tree = cKDTree(self.n_xy)
-
-            from scipy.sparse import csr_matrix
-            n = len(self.n_xy)
-            self.graph = csr_matrix((self.r_w, (self.r_u, self.r_v)), shape=(n, n))
-
-            # 機車有向邊 → 無向去重，用來量路網密度（同一段路不能算兩次）
-            uv = np.sort(np.column_stack([self.r_u, self.r_v]), axis=1)
-            _, uq = np.unique(uv, axis=0, return_index=True)
-            self.e_u = self.r_u[uq]
-            self.e_v = self.r_v[uq]
-            self.e_mid = (self.n_xy[self.e_u] + self.n_xy[self.e_v]) / 2.0
-            self.e_len = self.r_w[uq]
-            self.edge_tree = cKDTree(self.e_mid)
-
-            # 無向鄰接表（CSR 形式），供基準取樣時做隨機路徑遊走
-            n2 = len(self.n_xy)
-            src = np.concatenate([self.e_u, self.e_v])
-            dst = np.concatenate([self.e_v, self.e_u])
-            wgt = np.concatenate([self.e_len, self.e_len])
-            order = np.argsort(src, kind="stable")
-            self.adj_dst = dst[order]
-            self.adj_w = wgt[order]
-            self.adj_ptr = np.zeros(n2 + 1, dtype=np.int64)
-            np.cumsum(np.bincount(src, minlength=n2), out=self.adj_ptr[1:])
-
         # ---- 市界（基準取樣範圍 + 服務範圍檢核）----
         self.ring = None
         self.poly = None
@@ -261,7 +212,7 @@ class Data:
         if need_ref and os.path.exists(REF_PATH):
             r = np.load(REF_PATH)
             self.ref = {}
-            for kind in (("walk", "ride") if load_routes else ("walk",)):
+            for kind in ("walk",):
                 off = r["%s_off" % kind]
                 vals = r["%s_vals" % kind]
                 self.ref[kind] = {
@@ -381,92 +332,6 @@ class Data:
             })
         return safety_percentile(center_risk), int(len(arr)), regions
 
-    def ride_km(self, x, y, r=R_DENS):
-        """半徑內的機車路網長度（km），用來判斷路線經過的是市區還是鄉道。"""
-        idx = self.edge_tree.query_ball_point([x, y], r)
-        return float(self.e_len[np.asarray(idx, dtype=np.int64)].sum() / 1000.0) \
-            if idx else 0.0
-
-    # -------------------------------------------------------------- 路徑
-    def snap(self, p, limit=SNAP_MAX):
-        """把一個座標吸到最近的機車路網節點。
-
-        回傳 (節點編號, 距離公尺)；超過 limit 時節點編號給 -1，讓呼叫端能分辨
-        「這裡根本沒有路」和「有路但走不到」——這兩件事對使用者是完全不同的
-        訊息，全都回「找不到可行路線」等於把系統限制講成使用者選錯地方。
-        """
-        d, i = self.node_tree.query([p])
-        d, i = float(d[0]), int(i[0])
-        return (i if limit is None or d <= limit else -1), d
-
-    def shortest_path(self, a, b, limit=ROUTE_LIMIT, penalties=None):
-        """機車路網最短路徑。回傳 (節點序列, 長度公尺)，走不通回傳 None。
-
-        基準與查詢一定要共用這支：基準若改用隨機遊走取樣，走出來的是巷弄，
-        而 Dijkstra 走的是主幹道——事故幾乎都在主幹道上，兩者每公里事故率
-        差一個數量級，所有真實路線都會掉到 1 分。
-        """
-        from scipy.sparse import csr_matrix
-        from scipy.sparse.csgraph import dijkstra
-
-        s = int(self.node_tree.query([a])[1][0])
-        t = int(self.node_tree.query([b])[1][0])
-        if s == t:
-            return None
-        # 候選路線會暫時提高已選道路的成本，以找出真正不同的替代走法；回傳的
-        # 長度仍以原始邊長計算，不能把「避開成本」誤顯示成實際公里數。
-        graph = self.graph
-        if penalties:
-            w = self.r_w.copy()
-            mask = np.isin(self.r_u.astype(np.int64) * len(self.n_xy) + self.r_v,
-                           np.fromiter(penalties, dtype=np.int64))
-            w[mask] *= 3.0
-            graph = csr_matrix((w, (self.r_u, self.r_v)), shape=self.graph.shape)
-
-        dist, pred = dijkstra(graph, directed=True, indices=s,
-                             return_predecessors=True, limit=limit)
-        if not np.isfinite(dist[t]):
-            return None
-        seq, cur = [t], t
-        while cur != s:
-            cur = int(pred[cur])
-            if cur < 0:
-                return None
-            seq.append(cur)
-        seq.reverse()
-        # scipy 的 sparse advanced indexing 會回傳 1×n matrix；轉成一維後加總。
-        actual = float(np.asarray(self.graph[seq[:-1], seq[1:]]).ravel().sum())
-        return seq, actual
-
-    def alternative_paths(self, a, b, count=ROUTE_ALTERNATIVES):
-        """回傳最短路徑及至多兩條明顯不同、合理繞行的候選路線。
-
-        這不是導航引擎的 k-shortest paths 完整實作：本產品目的是比較安全歷史，
-        所以以已選路段的成本懲罰來產生可讀的替代走法，並剔除幾乎重疊或過度繞行
-        的候選，避免把同一條路換個巷口就當成「替代道路」。
-        """
-        first = self.shortest_path(a, b)
-        if first is None:
-            return []
-        paths = [first]
-        n = len(self.n_xy)
-        base_len = first[1]
-
-        for _ in range(max(0, count - 1)):
-            used = set()
-            for seq, _length in paths:
-                used.update(int(u) * n + int(v) for u, v in zip(seq[:-1], seq[1:]))
-            candidate = self.shortest_path(a, b, penalties=used)
-            if candidate is None or candidate[1] > base_len * 1.65:
-                break
-            cedges = set(int(u) * n + int(v) for u, v in zip(candidate[0][:-1], candidate[0][1:]))
-            # 與任一既有候選有超過 72% 的路段相同，對使用者沒有比較價值。
-            if any(len(cedges & set(int(u) * n + int(v) for u, v in zip(seq[:-1], seq[1:]))) /
-                   max(1, len(cedges)) > .72 for seq, _length in paths):
-                break
-            paths.append(candidate)
-        return paths
-
     def band_of(self, km, kind="walk"):
         """曝險落在哪一層。"""
         if self.ref is None:
@@ -477,14 +342,13 @@ class Data:
     def shrink(self, wsum, km, kind="walk", band_km=None):
         """把「事故加權 ÷ 路網km」往同層中位數收縮。
 
-        km        證據量。路網短（郊區小圈、短路線）時往中位數拉，長時信自己算的值。
+        km        證據量。路網短（郊區小圈）時往中位數拉，長時信自己算的值。
                   wsum=0 且 km 夠大時 adj 趨近 0，「很安全」才反映得出高分。
-        band_km   決定要拿哪一層的中位數。walk 兩者同值；route 的證據量是路線
-                  長度，但分層鍵是沿線路網密度，不分開會抓錯層的中位數。
+        band_km   決定要拿哪一層的中位數；walk 分析中兩者同值。
         """
         if self.ref is None:
             return wsum / max(km, 0.15)
-        k0 = SHRINK_KM_WALK if kind == "walk" else SHRINK_KM_RIDE
+        k0 = SHRINK_KM_WALK
         med = float(self.ref[kind]["med"][self.band_of(
             km if band_km is None else band_km, kind)])
         return (wsum + k0 * med) / (km + k0)
@@ -532,18 +396,6 @@ class Data:
 
 
 # ------------------------------------------------------------------ 取樣
-def sample_line(xy, step=20.0):
-    """沿折線每 step 公尺取一個點。"""
-    pts = []
-    for (x1, y1), (x2, y2) in zip(xy, xy[1:]):
-        d = float(math.hypot(x2 - x1, y2 - y1))
-        k = max(1, int(d // step))
-        for j in range(k):
-            t = (j + 0.5) / k
-            pts.append((x1 + (x2 - x1) * t, y1 + (y2 - y1) * t))
-    return np.asarray(pts) if pts else np.asarray([xy[0]])
-
-
 def grid_points(bbox_ll, step, fwd):
     """在 bbox 內以 step 公尺產生取樣點（EPSG:3826）。"""
     s, w, n, e = bbox_ll

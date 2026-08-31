@@ -44,7 +44,7 @@ def _load():
     if D is not None:
         return
     t0 = time.time()
-    D = core.Data(load_routes=False)
+    D = core.Data()
     if D.ref is None:
         raise RuntimeError("找不到 基準.npz，請先執行： python 建立基準.py")
     # 地名索引是選配：沒有它只是不能打字搜地址，地圖點選照常運作
@@ -91,8 +91,8 @@ class Analyze(BaseModel):
 def fail(code, message, status=400):
     """前端 UI.error 認得的錯誤形狀：{error:{code,message}}。
 
-    它已經備好 OUT_OF_COVERAGE / NO_ROUTE / INSUFFICIENT_DATA /
-    DATA_UNAVAILABLE 的中文文案，照這個 code 回就會顯示正確訊息。
+    它已經備好 OUT_OF_COVERAGE / INSUFFICIENT_DATA / DATA_UNAVAILABLE
+    的中文文案，照這個 code 回就會顯示正確訊息。
     """
     return JSONResponse(status_code=status,
                         content={"error": {"code": code, "message": message}})
