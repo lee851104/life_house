@@ -27,8 +27,9 @@
                   只標年份轉折 + 月均虛線，一眼看出在變好還是變差
 
   資料
-    ‧ 目前為示範資料（API_BASE = null）。期間：近五年 2021-07 ～ 2026-06
-    ‧ 接後端：把 API_BASE 改成 '' 即改打真實 API，第 3 段示範資料可整段刪除
+    ‧ 所有數字由同源後端 api.py 以真實事故資料計算（API_BASE = ''）。
+      期間：近五年 2021-07 ～ 2026-06
+    ‧ 原本的示範資料產生器（第 3 段）已移除；API_BASE 設為 null 才會顯示示範橫幅
   ============================================================================
 -->
 <style>
@@ -71,8 +72,8 @@ a{color:var(--ride);text-decoration:none} a:hover{text-decoration:underline}
   display:flex;align-items:center;gap:14px;padding:12px 20px;flex-wrap:wrap;
   position:sticky;top:0;z-index:1200}
 .brand{display:flex;align-items:center;gap:10px}
-.mark{width:34px;height:34px;border-radius:10px;flex-shrink:0;display:grid;place-items:center;
-  background:linear-gradient(140deg,#3B82F6,#2563EB);color:#fff;box-shadow:0 2px 6px rgba(37,99,235,.3)}
+.mark{width:34px;height:34px;flex-shrink:0;display:grid;place-items:center}
+.mark img{width:100%;height:100%;object-fit:contain;display:block}
 .brand h1{font-size:17px}
 .brand span{display:block;font-size:11.5px;color:var(--muted)}
 
@@ -407,7 +408,7 @@ a{color:var(--ride);text-decoration:none} a:hover{text-decoration:underline}
 <header class="hd">
   <div class="brand">
     <div class="mark" aria-hidden="true">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAMAAADVRocKAAAAwFBMVEXT3t/W4+NuqquirKyWqqyVqqyOpaBwi41TcHGu2tm3ycojcHBYeXpfhm5sjJBbdngBLDKzxshjfYEtW1R///93kJKprNFkfIJ1ebVeeHrH19StwrY0PT2svcIA//+tvcIAAGqrvcJ//38AAP9/f/+q/6oSQj+tzND/f//G2t1kfoAAVQAAAAATREr+/v4NPEMHNjssVViqqqr3/f1rh4pGaGt/f39Td3QlS1A5Y2Z4lJQ1XGFVVVVqholKdlmPpqm+HQ+JAAAAQHRSTlMrVwgcl2fgmdYbZwML/OOX+5Pm8QJuEpQEe46YBKEBWQLCAgECA///At5/AwD9B/z8/QMx9/gC+v79+f0Dzv3Iq2FfoAAACoRJREFUeNrlWnd/4kgSbUUkwCSP09x4wu7la1UrB4SG7/+t9lVLgAAJ27t7/9xpxvAzSPW6q17FtpD/5Uv8/wBQbJnPeT6bzfL82bTiPxGA4t3IN2b8JwCQqV+F+Pxjv2g8vhp3/8MQRBqD/hgAiydh2dsswhUcrhK/FO6DlbwNcQvgE78Y9iStVai0YKXUESQMgyxdrhnjO/0eAHrGj7HPqkBLP/yUUSudP1ThfZXtBcT79GGAXMrETqPDYqMsY+0v9vu9C0tEXl2qUO8piLYOxNPHAKAdcooy1OJZFbaRnG3PeH1pOtUpVU+mcgxiGOCLpG9NHbYLdG2rFQ4XMPnKZy2IcPaFCjRE1SQjsoY+pO9SuK2qq8wVemV5R8vDLSKe8xutN1kUshIzm+TufQDQvp3xwsKysJNxh8pbBzQmRch7jRpD5vk7AExJk3rF4lMW/3zbUWI4inAzpq/aOPj9TQBLGhvYFbzBnt8TDB5ZYQvmQ1jikfgNgJmcplo7CyHHuXcRq/DipNiEKt1E5jcBnqWT8VqyB5L++2MyFpI88SZUKqCDcQBTOkzOIJ0OaPMmgmYGI3ji/Elxzh+nCsGHZSJ39MHEAmOv9eY9/2wP4nz9uCWMJvSx5R8Dr4HHVZie7aEHEMtpoeXL3yNf+7+RMV23SY8domeoZKNAn4mc0W3SjMLvZOJxwHV70VWc5NMGKoT8+ddb8pmFX8ZW4EvBeygf5OwSgGY04ej79Ab5LUlJMn5Pa4cwmx4jlzgubAoChWnylnOJRVrY4yzYSTtiOQMqKjTyTfn4zvAQOes9SXPklrmccKCckHUGYEkb+ikdOb+l/i/yNdM5KGqEHKll/FnCtiyMbpOiU5AfKd7YM90076RLQkHgGWOGANsr3LChWX4EAENT9oBpW0iMmncSMc3rMlQKCUZeRJ3TQuwSm7TlCeATORUe3d8yAMJ4ysu/TwXMqNRq1OFzS3hQR0F9G2z5k2TMclo9ThGyH3ISQkTh2IwUZg5z1a6UKm2NL1qtlYoTjDUeyUirP6xQoXAZlOpcj6A7FBTJTLCFwCN2Bg1AiBEqS0bJHcvE1QXS5ht7q/6diwKVOYOmjtkKqnZ444KfMHjL9ojNuhXzBZ20K45RNXFM0JHXHHoE9lINAQEAc7ADPpbQqPq/8QLOhBHbBHwNAyTJgYWRA5GFj/uFjqLg6ILG1ENrZueqsmUvi3L0b1CuqCD1hx4SCAzK1jaYyQcIqKxB16SdpH3NyijWF+rGN8ty1RniQk1fn2mp2ogEFdGe9ZWMOBkivPZccUUYv0vDYeReeYSlk3spUBECAHUK0thsLAuy+gcVSF+QhhE5ViUQHi+KAGYqPrfEr1LU2Ob64o4uj9s6y/ISrZHi2WNDlJ64erbhfctnYck1KA0neBzyrkjLn9JYELGkaJgCAUx0lucs+gGx9ySFKRcaanbNBKOB+pUqLCnzGz7e+Zx9VivAASJ8aEgxk/cBxznrqgOZprprcmEpOrJ/MEodfa5PRCoQUh/AIgMsLNcXhaIv2xpS1eDyiV5Euk0g6jcL36W/UeFV8KMtnl8CAPWYKsWlqye27iuKs4pcuFv3zk0cd7t17ROGxaGKV4O7T8At+0mgWgzC+hzAp8QtedsIl6ciCUa5+/nz/m7q/sSbS31zyQeUDMEqcnpaclhAIuDHx+RwWhKvX5UbQ/rmPLd6APhnAODu5wnAnM99nS4QcLyj8nbSjFRYiBYgvQSYZqtVfQxucff6ucDaGaA4AdAx4TVqhRyQHyOJhaxTPAr5AoDtOQCWMSkKm0mYrF8mRvvp33gHxU/XcIu7u7sOAFXgdMJdLHtNCjPTkb8Wwm1mCbkEgHtNQJHI7zFZmyqK0EB2JchfcE1JvwktCh44qaKaXR1mTM7s4qPHHQU47J/bKeQKo2Oxb1mWT4Lf2jtQZrGb6e6MZL/OaAGq0R1wDU0cptjZEApzBhXbOyhf2NuDikDnbTtsYCVT/Ne+iwNAMQBsoFwazpVCx5kg+jdXfCSNwgNN2cgdTZGct7rUU1u6iiEWypAOINy+ATBhgI5FW8O9u+tYdAJI6aoKZhaxDZDPwg0NZ2PRTltaAAIAdrBlPyhOAKsbAEjL8OQaQGJsBy3AkgH+CZoWXuEmdlF4d/abO5izgxkci5DQ8lsAqgVgnhoGD+v0q7wNILleD7cIFdy4RcZQ0XUNMFCRjQKQy9GUxI6QD8q9aQ3bQJ0BEOW/QNIvh4gT67KcaToAgG+iFylynTyXQ/VZLo0LgIEdjAKwD6GWEha9llzXDaSrE8DThwFi+hzpECA0F8PBqoKOKvo4gCn3qH89uRNt+zdYF/0hAOIKftEWXjB32Azo6BqAYnN3SFm7nRnHeceiSwBU7BUy8RqzKh6xRJhMOrS7HSrix3ygejWGAXZcsatK16akK+GhlEC9UGFqV6Tk0TIdmy9nblp+Ql2ouABoVacrdu4P5FNb230dAyhfuAr+7CybtKjqDjSqqiL1MHIcAJihq4RmHRiWO5xfp3Bm9Gz++A7otcmyCNNkpU4DchWusEz965UnL9q5RKx7tC/Evnbdox0BgkUGzoX9yXsYdiDd2xkA9/VBgKLBbJtAkg46Z4wXchp0tKOYdtlYd1UsFnXQuy4BeMWVnnz1+uTMv2hycsvg8qgvCBqJsq09/fyvf1RqDMCnb4w+0eFHA+x8LkRXKZl9O5tzmUSqt/QAjUTx2bHdIgqCUI3t4JOku5Db4pgOAPmOmhACbAaLcZntVgz7dKoSRumTswiqRRWs9MBdG3zIBhgZ4etw0h/nwNhcS0fOqaLFYL3pGMmLL5upYXCJAqH3bAj4aRlVoFY74D8BkJbFFNr1ZhW+npAEmIebvkDdM7cXWXRQA9Q+Mab7opvkoJCucRyyXxuWL4x0xZ+e/CCXlsezV6cbTJyScaPaZ0GQoorObDsxjGXdOQCiygbnIQd5CQP0HC03aR+0Ye5iKEjGIjycNIXhyZeYb7aX8W74i6DYOzof56aVn1LmEWCuh8dhJg6xU5zG7k50zkh9AlLbbs8DIu9VW8kU+XlOPgBAQXVwH7ZzkAsV/UdOLuUHhZM4RXjkkcfHTeAZXSX9FoBm0sw4tLgU0/VoeUZuj9j8szCmSwzt/67PN8oU3exFNDmvKvDf0kNDt9fXibPGbKs0UVDHVN5TFVTMpIMD6wMRGilbgpR0v8nDNuXR4Oya86hI2ZY4/ngxEkxI26NF3aO6Qg50y30AdCDrUssfm753UxiOPtvX5X1xUheOf2hwXHWsTXkHtOeZr/IezxYiLofbOomrfgRFi52MTPz7AMaGR69qQ+cbFZelULIvgzNbh9ysjQ5hj9W1XWif319OdsTVISbZx0CsZ2aY8Y4eKJxsEEUhQlT0ejU2EddHABJBU3UqCsvm1rT8AKDvVfc8F8jfPAmEtySTrI0Wmpw3jryx3ubo55E9dLYkBtclp17JwY1dN7999tSeiyn2Qzk0lRPDYyZJU5QRjS9vy2f3n2R1XdXNtZvfOk/WGzUQk99znDa1HdsYGyeNH7l/yt95ltkWzbP443+VYPnvOw2M89y0/of/eOY3MInfjVQkQqYAAAAASUVORK5CYII=" alt="">
     </div>
     <div><h1>Life House 安居指數</h1><span>交通安全分析</span></div>
   </div>
@@ -1623,7 +1624,7 @@ var UI = (function () {
 
   function error(err) {
     /* 後端沒給訊息時才用的預設文案。後端的 message 比較具體
-       （「起點附近 2382 公尺內沒有可通行的道路」vs「僅支援桃園市範圍」），
+       （「選定位置不在桃園市範圍內」vs「僅支援桃園市範圍」），
        所以它優先——反過來的話，這張表會把具體理由整個蓋掉。 */
     var codes = { OUT_OF_COVERAGE: '本版本目前僅支援桃園市範圍。',
                   INSUFFICIENT_DATA: '目前資料不足，無法可靠評估。',
