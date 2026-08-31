@@ -143,7 +143,14 @@ K(d) = 1 - (d / 500m)²          Epanechnikov 距離核
 | ≤2 件的格比例 | 78.2% | **66.5%** |
 | 中位數件數 | 0 | **1** |
 
-近六成的格子是 0 件時，百分位排不出有意義的名次。完整結果在 [reports/五年行人事故評估.json](reports/五年行人事故評估.json)，可用 `評估五年行人事故.py` 重跑。
+近六成的格子是 0 件時，百分位排不出有意義的名次。完整結果在
+[reports/五年行人事故評估.json](reports/五年行人事故評估.json)，重跑需依序執行兩步
+（第二步讀取第一步產生的 `reports/基準_200m_評估.npz`）：
+
+```bash
+.venv/Scripts/python.exe 評估步行網格.py        # → reports/基準_200m_評估.npz
+.venv/Scripts/python.exe 評估五年行人事故.py    # → reports/五年行人事故評估.json
+```
 
 ### 5.5 路網要符合使用情境
 
@@ -259,6 +266,7 @@ python -m venv .venv
 - [MODEL_CARD.md](MODEL_CARD.md) — 用途、輸入輸出、限制與已知偏誤、不適用情境、隱私。
 - [configs/analysis.yaml](configs/analysis.yaml) — 所有可調參數（半徑、網格、嚴重度權重、時間衰減、分層數、收縮先驗）。
 - [reports/五年行人事故評估.json](reports/五年行人事故評估.json) — 五年 vs 兩年窗的量化比較與樣本地點分數。
+- [LICENSE](LICENSE) — 程式碼授權（MIT），以及事故資料、OSM 圖資、底圖各自的授權與義務。
 
 ### 資料來源與限制
 
@@ -272,6 +280,7 @@ python -m venv .venv
 
 ```text
 api.py             FastAPI 端點與前端靜態檔服務
+launcher.py        啟動.bat 實際執行的進入點；服務就緒後自動開啟瀏覽器
 核心.py            空間查詢、曝險校正、風險與百分位計算
 地名查詢.py        FTS5 中文地名查詢與排序
 index.html         Leaflet 單頁前端
@@ -283,7 +292,8 @@ index.html         Leaflet 單頁前端
 建立基準.py        建立相對分數的比較基準（基準.npz）
 建立地名.py        建立地名搜尋索引（地名.db）
 地名正規化.py      建索引與查詢共用的正規化規則（臺／台、全半形、中文數字）
-評估五年行人事故.py  產出 reports/ 的窗長比較報告
+評估步行網格.py    評估網格解析度，產生 reports/基準_200m_評估.npz
+評估五年行人事故.py  比較兩年與五年窗，產出 5.4 的證據表（需先跑上一支）
 src/               可匯入的純函式與套件入口（risk / validation / serving）
 tests/             pytest 測試
 ```
