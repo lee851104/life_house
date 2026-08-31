@@ -1,0 +1,50 @@
+MIT License
+
+Copyright (c) 2026 Life House
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+本 MIT 授權僅涵蓋本專案的原始碼。專案使用的第三方資料與圖資各自沿用原授權，
+不因本檔案而改變：
+
+1. 道路交通事故資料（A1／A2）
+   來源：政府資料開放平臺 <https://data.gov.tw/>
+   提供機關：內政部警政署
+   授權：政府資料開放授權條款－第 1 版
+   <https://data.gov.tw/licenses>
+   再利用時請依該條款標示來源與提供機關。
+
+2. 路網與地名資料
+   來源：OpenStreetMap（透過 taiwan-latest.osm.pbf 離線解析）
+   授權：Open Database License (ODbL) 1.0
+   <https://www.openstreetmap.org/copyright>
+   衍生資料庫的散布須遵循 ODbL 的相同方式分享（share-alike）義務。
+
+3. 地圖底圖
+   來源：內政部國土測繪中心 臺灣通用電子地圖／正射影像 WMTS 服務
+   <https://maps.nlsc.gov.tw/>
+   依該中心之服務條款使用。
+
+4. Leaflet
+   授權：BSD 2-Clause
+   <https://github.com/Leaflet/Leaflet/blob/main/LICENSE>
+
+免責聲明：本專案輸出的安全分數為相對風險指標，非政府官方安全評等，不預測
+未來事故，亦不構成不動產、保險或信貸決策之專業建議。詳見 MODEL_CARD.md。
