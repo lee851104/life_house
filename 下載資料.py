@@ -25,8 +25,9 @@ RAW = os.path.join(BASE, "raw")
 A1D = os.path.join(BASE, "data", "A1")
 A2D = os.path.join(BASE, "data", "A2")
 API = "https://opdadm.moi.gov.tw/api/v1/no-auth/resource/api/dataset/"
-UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/125.0 Safari/537.36"}
+# 誠實標示請求來源。實測 opdadm.moi.gov.tw 不檢查 User-Agent（無 UA 也回 200），
+# 因此不需要偽裝成瀏覽器。
+UA = {"User-Agent": "LifeHouse/1.0 (walking-safety index; research use)"}
 
 # (檔名, dataset GUID, resource GUID)
 YEAR_ZIPS = [
