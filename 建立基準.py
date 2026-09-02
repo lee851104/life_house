@@ -28,6 +28,7 @@ import time
 import numpy as np
 
 import 核心 as core
+from src.features.risk import epanechnikov_weights
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(BASE, "基準.npz")
@@ -36,8 +37,9 @@ GRID = 250.0          # walk 基準網格（公尺）
 
 
 def mask_inside(ring, pts):
+    from shapely import contains
+    from shapely import points as mk_points
     from shapely.geometry import Polygon
-    from shapely import points as mk_points, contains
     return contains(Polygon(ring), mk_points(pts))
 
 
@@ -92,7 +94,7 @@ def build_walk(D):
             idx = np.asarray(idx, dtype=np.int64)
             idx = idx[D.g_ped[idx]]
             d = np.hypot(D.g_xy[idx, 0] - x, D.g_xy[idx, 1] - y)
-            w = float((D.g_sev[idx] * (1.0 - (d / core.R_WALK) ** 2)).sum())
+            w = float((D.g_sev[idx] * epanechnikov_weights(d, core.R_WALK)).sum())
         else:
             w = 0.0
         exp.append(km)

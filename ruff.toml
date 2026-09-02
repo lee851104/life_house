@@ -1,0 +1,16 @@
+line-length = 100
+target-version = "py313"
+
+exclude = [".venv", "data", "raw", "縣市", "notebooks"]
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "E501",   # 行長交給 formatter 處理，中文註解算字數會誤判
+    "B008",   # FastAPI 的 Depends()/Query() 就是要寫在預設值裡
+    "UP031",  # 全專案一致使用 % 格式化；中文字串混 f-string 反而更難讀
+    "UP032",  # 同上，.format() 的少數幾處維持一致
+    "UP009",  # 檔頭的 coding 宣告在 Windows 中文環境是刻意保留的訊號
+    "B905",   # zip(strict=) 是行為變更，資料管線不在送件前改
+    "E702",   # 少數 `print(...); return` 的緊湊寫法是刻意的
+]

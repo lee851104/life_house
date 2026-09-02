@@ -18,7 +18,12 @@
 注意：即時檔（2026）只有當年度資料，且會隨時間往後補；年度檔（2024/2025）內容固定。
       A2 資料量大，完整下載＋解壓後約 1.4 GB。
 """
-import os, re, shutil, time, urllib.request, zipfile
+import os
+import re
+import shutil
+import time
+import urllib.request
+import zipfile
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(BASE, "raw")

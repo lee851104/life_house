@@ -38,8 +38,12 @@ from collections import defaultdict
 import numpy as np
 
 import 地名正規化 as N
+from src.data.osm_path import readable_osm_path
 
 BASE = os.path.dirname(os.path.abspath(__file__))
+# libosmium 在 Windows 開不了含非 ASCII 字元的路徑（本專案資料夾叫「LH專案」），
+# 只會丟一句 "Open failed ... unknown error"。readable_osm_path() 會在需要時
+# 接一個純 ASCII 的暫存硬連結給它。詳見 src/data/osm_path.py。
 PBF = os.path.join(BASE, "raw", "taiwan-latest.osm.pbf")
 DB_IN = os.path.join(BASE, "事故索引.db")
 BND = os.path.join(BASE, "市界.npz")
@@ -112,10 +116,10 @@ TAOYUAN = ("桃園區", "中壢區", "平鎮區", "八德區", "楊梅區", "蘆
 
 # ------------------------------------------------------------------ 幾何
 def load_geo():
-    from shapely.geometry import Polygon
-    from shapely.prepared import prep
     from pyproj import Transformer
     from scipy.spatial import cKDTree
+    from shapely.geometry import Polygon
+    from shapely.prepared import prep
 
     poly = Polygon(np.load(BND)["ring"])
     fwd = Transformer.from_crs("EPSG:4326", "EPSG:3826", always_xy=True)
@@ -183,7 +187,7 @@ def scan_osm(db, poly, fwd):
                 flush()
 
     print("  掃 node…")
-    fp = (osmium.FileProcessor(PBF)
+    fp = (osmium.FileProcessor(readable_osm_path(PBF))
           .with_filter(osmium.filter.EntityFilter(osmium.osm.NODE)))
     n = 0
     for o in fp:
@@ -209,7 +213,7 @@ def scan_osm(db, poly, fwd):
     print("    node %d 筆 ｜ POI %d (%.0fs)" % (n, len(pois), time.time() - t0))
 
     print("  掃 way…（載入節點座標，約 2 GB）")
-    fp = (osmium.FileProcessor(PBF)
+    fp = (osmium.FileProcessor(readable_osm_path(PBF))
           .with_locations("flex_mem")
           .with_filter(osmium.filter.EntityFilter(osmium.osm.WAY)))
     w = 0
@@ -254,7 +258,7 @@ def scan_osm(db, poly, fwd):
     # relation，只掃 way 的話搜「中原大學」只會撈到校門口的 YouBike 站。
     # with_areas 會把 way 與 relation 都組成面，整份台灣只多 16 秒。
     print("  掃 area（面狀 POI，含 relation）…")
-    fp = (osmium.FileProcessor(PBF)
+    fp = (osmium.FileProcessor(readable_osm_path(PBF))
           .with_areas()
           .with_filter(osmium.filter.EntityFilter(osmium.osm.AREA)))
     a = 0
@@ -375,7 +379,6 @@ def build():
         places.append(dict(kind="road", name=r + ("%s段" % s if s else ""),
                            district=d, detail="道路", x=x, y=y,
                            weight=12 + min(8, len(pts) / 40.0)))
-    n_road = len(places)
 
     # ---- POI ----
     seen, keep = set(), []
@@ -390,7 +393,6 @@ def build():
     for (nm, kind, w, x, y), d in zip(keep, districts_of([(k[3], k[4]) for k in keep])):
         places.append(dict(kind="poi", name=nm, district=d,
                            detail=kind, x=x, y=y, weight=w))
-    n_poi = len(places) - n_road
 
     # ---- 路口 ----
     for (nm, x, y, cnt), d in zip(xrows, districts_of([(r[1], r[2]) for r in xrows])):
@@ -475,7 +477,9 @@ def write(db, places, road_id, inv):
       VACUUM;
     """)
     db.commit()
-    q = lambda s: db.execute(s).fetchone()[0]
+    def q(sql):
+        return db.execute(sql).fetchone()[0]
+
     print("\n完成 %s  %.1f MB" % (os.path.relpath(OUT, BASE),
                                   os.path.getsize(OUT) / 1048576))
     print("  可搜尋：路段 %d ‧ POI %d ‧ 路口 %d ＝ %d 筆"

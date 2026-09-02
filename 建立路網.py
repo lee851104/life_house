@@ -21,7 +21,12 @@ import urllib.request
 
 import numpy as np
 
+from src.data.osm_path import readable_osm_path
+
 BASE = os.path.dirname(os.path.abspath(__file__))
+# libosmium 在 Windows 開不了含非 ASCII 字元的路徑（本專案資料夾叫「LH專案」），
+# 只會丟一句 "Open failed ... unknown error"。readable_osm_path() 會在需要時
+# 接一個純 ASCII 的暫存硬連結給它。詳見 src/data/osm_path.py。
 PBF = os.path.join(BASE, "raw", "taiwan-latest.osm.pbf")
 OUT = os.path.join(BASE, "路網.npz")
 PBF_URL = "https://download.geofabrik.de/asia/taiwan-latest.osm.pbf"
@@ -85,7 +90,7 @@ def build():
     t0 = time.time()
     # 必須讀進 node 才能建座標索引（pbf 中 node 早於 way），所以不能在讀取階段
     # 就只挑 WAY；改成全部讀、用 C++ 端的 filter 只把 way 交給 Python。
-    fp = (osmium.FileProcessor(PBF)
+    fp = (osmium.FileProcessor(readable_osm_path(PBF))
           .with_locations("flex_mem")
           .with_filter(osmium.filter.EntityFilter(osmium.osm.WAY))
           .with_filter(osmium.filter.KeyFilter("highway")))

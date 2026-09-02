@@ -19,6 +19,8 @@ import sys
 import time
 from collections import Counter, defaultdict
 
+from src.features.risk import is_pedestrian_accident as _is_pedestrian
+
 BASE = os.path.dirname(os.path.abspath(__file__))
 SRC = [os.path.join(BASE, "縣市", "桃園市_%s_2022-2026.csv" % k) for k in ("A1", "A2")]
 LEGACY_2021 = [
@@ -85,11 +87,27 @@ def parse_roc_time(value):
             "%02d%02d%02d" % (int(hour), int(minute), int(second or 0)))
 
 
+def parties_text(veh):
+    """組出要寫進 accidents.parties 的當事車種字串。只留 4 種。
+
+    含「行人」的車種一定要排進前 4 個。核心.py 判斷行人事故時只看得到這個
+    字串，第 5 種以後被截掉的話，那件事故在分數、圈內件數與地圖上會整個
+    消失——多車連環事故的當事車種確實會超過 4 種。
+    """
+    ped = [v for v in veh if "行人" in v]
+    rest = [v for v in veh if "行人" not in v]
+    return "、".join((ped + rest)[:4])
+
+
 def is_pedestrian_accident(a):
-    """只留下涉及行人的事故，並依需求忽略平交道事故。"""
-    pedestrian = a.get("atype") == "人與車" or any("行人" in v for v in a.get("veh", []))
-    crossing = "平交道" in (a.get("atype") or "") or "平交道" in (a.get("rtype") or "")
-    return pedestrian and not crossing
+    """涉及行人、且非平交道的事故。
+
+    判準本體在 src/features/risk.py，與 核心.py 共用；而且刻意拿
+    parties_text() 的結果去問，跟 核心.py 從 DB 讀到的字串完全一致，
+    建庫時印出來的件數才等於 API 實際會算的件數。
+    """
+    return _is_pedestrian(a.get("atype"), parties_text(a.get("veh", [])),
+                          a.get("rtype"))
 
 
 def read_accidents():
@@ -165,8 +183,14 @@ def read_accidents():
 
     all_accidents = list(acc.values())
     pedestrian = [a for a in all_accidents if is_pedestrian_accident(a)]
-    print("  讀入 {:,} 列當事者 → {:,} 件事故，其中行人事故 {:,} 件".format(
-        rows, len(acc), len(pedestrian)))
+    ground = [a for a in pedestrian if not is_motorway(a)]
+    # 兩個數字都要印。只印上面那個害 README 寫錯過一次：它宣稱「主要分數只
+    # 使用其中 N 件行人事故」，但分數用的是 核心.py 的 g_ped，那是排除國道／
+    # 高架／隧道之後的地面事故，比這裡少了十幾件。
+    print("  讀入 {:,} 列當事者 → {:,} 件事故".format(rows, len(acc)))
+    print("  行人事故 {:,} 件，其中地面（實際計分）{:,} 件、"
+          "國道／高架／隧道 {:,} 件".format(
+              len(pedestrian), len(ground), len(pedestrian) - len(ground)))
     return all_accidents
 
 
@@ -303,7 +327,7 @@ def main():
             arows.append((aid, xid, m["ymd"], m["hms"], int(m["hms"][:2] or 0),
                           "%s-%s" % (m["ymd"][:4], m["ymd"][4:6]), m["cat"],
                           m["lat"], m["lon"], jlat, jlon, m["dead"], m["hurt"],
-                          m["rtype"], m["atype"], m["cause"], "、".join(m["veh"][:4]), m["loc"],
+                          m["rtype"], m["atype"], m["cause"], parties_text(m["veh"]), m["loc"],
                           m["cls"], mw))
             art.append((aid, m["x"], m["x"], m["y"], m["y"]))
 

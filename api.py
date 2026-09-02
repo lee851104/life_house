@@ -22,8 +22,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-import 核心 as core
 import 地名查詢 as geoq
+import 核心 as core
+from src.features.risk import involves_large_vehicle
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 HTML = os.path.join(BASE, "index.html")
@@ -31,7 +32,16 @@ HTML = os.path.join(BASE, "index.html")
 SHOW_X = 12          # 回傳（並畫在地圖上）的路口數上限
 HI_COUNT = 6         # 行人事故路口分布約第 95 百分位；與前端 tierOf() 一致
 NEAR_HOT = 300.0     # 「鄰近事故集中路口」的距離門檻（公尺）
-PEAK_H = {7, 8, 9, 17, 18, 19, 20}          # 尖峰 07–10、17–21
+# 資料窗長度的中文標籤，由 configs/analysis.yaml 的 months 推導。
+# 寫死害過一次：資料窗從 2 年改成 5 年時，前端 12 處都改了，只有 risk_factors()
+# 裡的兩句沒改，UI 會拿五年的件數配上「近兩年」的說明。
+_CN_NUM = "零一二三四五六七八九十"
+_years = round(core.MONTHS / 12)
+# 用中文數字，跟 index.html 的 12 處「近五年」對齊。寫成「近5年」不會出錯，
+# 但同一個畫面上兩種數字寫法並存，看起來就是沒對過稿。
+WINDOW_LABEL = "近%s年" % (_CN_NUM[_years] if _years <= 10 else _years)
+# 尖峰時段的常數隨 ratios() 一起移除：時段篩選由前端送 time_start/time_hours
+# 決定，後端只需要「夜間」這一個固定區間來算 risk_factors 的夜間事故占比。
 NIGHT_H = set(range(18, 24)) | set(range(0, 6))   # 夜間 18–06
 D: core.Data = None
 GEO: geoq.Geo = None
@@ -81,8 +91,12 @@ async def on_invalid(_req, exc):
 # ------------------------------------------------------------------ 請求
 class Analyze(BaseModel):
     mode: str = Field("walk", pattern="^walk$")
-    lat: float | None = None
-    lon: float | None = None
+    # ge/le 不只是擋離譜的值，主要是擋 nan 與 inf：pydantic 預設接受 "nan"
+    # 字串，pyproj 轉換也不會拋錯，一路傳到 cKDTree 才炸
+    # 「'x' must be finite」，變成沒有訊息的 500。nan 與所有比較都回 False，
+    # 有了 ge/le 就會在驗證階段被擋下來，回前端認得的 422。
+    lat: float | None = Field(None, ge=-90, le=90)
+    lon: float | None = Field(None, ge=-180, le=180)
     time_start: int = Field(0, ge=0, le=23)
     time_hours: int = Field(24, ge=1, le=24)
 
@@ -96,17 +110,6 @@ def fail(code, message, status=400):
     """
     return JSONResponse(status_code=status,
                         content={"error": {"code": code, "message": message}})
-
-
-def ratios(gidx):
-    """夜間佔比、尖峰佔比。樣本太少時退回全市平均，避免 1 件事故就 100%。"""
-    if gidx.size < 8:
-        h = D.g_hour
-    else:
-        h = D.g_hour[gidx]
-    night = float(np.isin(h, list(NIGHT_H)).mean())
-    peak = float(np.isin(h, list(PEAK_H)).mean())
-    return night, peak
 
 
 def trend_of(gidx):
@@ -341,7 +344,7 @@ def risk_factors(gidx, score, hot_n):
     n = max(1, int(gidx.size))
     parties = [D.a_txt[D.g_ix[i]][4] or "" for i in gidx]
     ped = sum("行人" in s for s in parties)
-    large = sum(any(word in s for word in ("大客車", "大貨車", "聯結車")) for s in parties)
+    large = sum(involves_large_vehicle(s) for s in parties)
     night = float(np.isin(D.g_hour[gidx], list(NIGHT_H)).mean()) if gidx.size else 0.0
 
     factors = [
@@ -353,13 +356,13 @@ def risk_factors(gidx, score, hot_n):
                     else "300 公尺內未見事故集中的路口")},
         {"icon": "🚚", "label": "大型車涉入", "weight": 15,
          "score": clamp_score(82 - large / n * 230),
-         "reason": "近兩年 %d／%d 件事故有大型車涉入" % (large, int(gidx.size))},
+         "reason": "%s %d／%d 件事故有大型車涉入" % (WINDOW_LABEL, large, int(gidx.size))},
         {"icon": "🌙", "label": "夜間事故", "weight": 13,
          "score": clamp_score(84 - night * 70),
          "reason": "夜間（18–06）事故占 %d%%" % round(night * 100)},
         {"icon": "🚶", "label": "行人涉入", "weight": 20,
          "score": clamp_score(88 - ped / n * 260),
-         "reason": "近兩年 %d／%d 件事故有行人涉入" % (ped, int(gidx.size))},
+         "reason": "%s %d／%d 件事故有行人涉入" % (WINDOW_LABEL, ped, int(gidx.size))},
     ]
     for item in factors:
         item["tone"] = "bad" if item["score"] < 60 else "mid" if item["score"] < 75 else "ok"
@@ -378,7 +381,8 @@ def analyze(req: Analyze):
 
 
 @app.get("/api/v3/intersection")
-def intersection(lat: float = Query(...), lon: float = Query(...),
+def intersection(lat: float = Query(..., ge=-90, le=90),
+                 lon: float = Query(..., ge=-180, le=180),
                  r: float = Query(60.0, ge=5, le=300),
                  time_start: int = Query(0, ge=0, le=23),
                  time_hours: int = Query(24, ge=1, le=24)):
@@ -393,7 +397,8 @@ def intersection(lat: float = Query(...), lon: float = Query(...),
 @app.get("/api/v3/geocode")
 def geocode(q: str = Query(..., min_length=1, max_length=60),
             limit: int = Query(8, ge=1, le=20),
-            lat: float | None = Query(None), lon: float | None = Query(None)):
+            lat: float | None = Query(None, ge=-90, le=90),
+            lon: float | None = Query(None, ge=-180, le=180)):
     """地址／地標／路口的模糊搜尋，給前端的輸入框做 autocomplete。
 
     lat/lon 是目前的地圖中心（選填）。桃園 12 個區裡有 9 個都有中山路，

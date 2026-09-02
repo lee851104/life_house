@@ -25,4 +25,8 @@ test:
 	uv run pytest
 
 serve:
-	uv run uvicorn src.serving.api:app --host 0.0.0.0 --port 8000
+	uv run uvicorn src.serving.api:app --host 127.0.0.1 --port 8000
+
+# 綁 127.0.0.1 與 啟動.bat、README 一致。原本綁 0.0.0.0 會把一個沒有認證、
+# 單次查詢要跑數十次 KD-tree 的 API 開放給整個區域網路——在會場 Wi-Fi 上
+# 示範時不是好主意。要對外展示請改用有反向代理的部署。

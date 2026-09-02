@@ -104,3 +104,8 @@ def test_first_layer_marker_count_uses_pedestrian_accidents(monkeypatch):
 
     assert item["count"] == 2
     assert item["detail"].startswith("2 件")
+
+
+def test_window_label_uses_chinese_numeral_like_the_frontend():
+    """index.html 有 12 處寫「近五年」；後端輸出「近5年」會讓同一畫面兩種寫法並存。"""
+    assert api.WINDOW_LABEL == "近五年"

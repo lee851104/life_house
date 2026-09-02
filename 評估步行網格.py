@@ -20,7 +20,7 @@ import numpy as np
 
 import 建立基準 as baseline
 import 核心 as core
-
+from src.features.risk import epanechnikov_weights
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(BASE, "reports", "基準_200m_評估.npz")
@@ -182,8 +182,12 @@ def build_200m(D: core.Data) -> dict[str, object]:
         idx = D.acc_tree.query_ball_point([x, y], core.R_WALK)
         if idx:
             idx = np.asarray(idx, dtype=np.int64)
+            # 要跟 建立基準.py 一樣先濾成行人事故。少了這一行，這支腳本評估的
+            # 是「全部地面事故」的網格解析度，跟正式分數用的基準不是同一件事，
+            # 評估結論就推不到線上系統身上。
+            idx = idx[D.g_ped[idx]]
             distance = np.hypot(D.g_xy[idx, 0] - x, D.g_xy[idx, 1] - y)
-            weight = float((D.g_sev[idx] * (1.0 - (distance / core.R_WALK) ** 2)).sum())
+            weight = float((D.g_sev[idx] * epanechnikov_weights(distance, core.R_WALK)).sum())
         else:
             weight = 0.0
         kept.append((x, y))

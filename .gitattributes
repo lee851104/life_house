@@ -1,0 +1,16 @@
+# 統一換行符，避免 Windows 與 macOS/Linux 混用時整個檔案被判定為修改
+* text=auto eol=lf
+
+# 這些在 Windows 上必須是 CRLF
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# 二進位檔不要動
+*.png binary
+*.jpg binary
+*.zip binary
+*.db binary
+
+# 建置產物（不進版控，但萬一有人 force-add 也不要被當成文字檔改壞）
+*.npz binary
+*.pbf binary

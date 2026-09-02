@@ -7,7 +7,12 @@
 風險定義
     risk(P) = Σ 事故嚴重度 × K(d) / Σ 路網長度 × K(d)
     K(d)    = 1 - (d/R)²        Epanechnikov 核，R = 500m
-    嚴重度  = 1 + 20 × 死亡人數
+    嚴重度  = 1 + fatality_weight × 死亡人數
+              （configs/analysis.yaml，目前為 4：A2 → 1、A1 死亡 1 人 → 5）
+
+    公式本體在 src/features/risk.py，這裡只負責把資料餵進去。把公式抄一份
+    寫死在這裡的下場已經發生過：權重從 20 改成 4 時沒人記得改註解，說明與
+    實際行為差了 5 倍。
 
     分子分母用同一個核加權，risk 才是真正的「每公里有效路網的事故密度」，
     而不是「圈內事故數 ÷ 圈內路長」這種分子分母尺度不一致的比值。
@@ -29,6 +34,8 @@ from datetime import date, datetime
 
 import numpy as np
 import yaml
+
+from src.features.risk import accident_severity, epanechnikov_weights, is_pedestrian_accident
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(BASE, "configs", "analysis.yaml"), encoding="utf-8") as f:
@@ -58,7 +65,7 @@ MIN_KM = float(ANALYSIS_CONFIG["minimum_walk_network_km"])
 
 
 def sev(fat):
-    return 1.0 + FATAL_W * np.asarray(fat, dtype=np.float64)
+    return accident_severity(np.asarray(fat, dtype=np.float64), FATAL_W)
 
 
 # ------------------------------------------------------------------ 載入
@@ -91,8 +98,6 @@ class Data:
         self.a_lon = lon
         ax, ay = self.fwd.transform(lon, lat)
         self.a_xy = np.column_stack([ax, ay])
-        self.a_jlat = np.array([r[2] for r in rows])
-        self.a_jlon = np.array([r[3] for r in rows])
         self.a_fat = np.array([r[4] for r in rows], dtype=np.int32)
         self.a_inj = np.array([r[5] for r in rows], dtype=np.int32)
         self.a_hour = np.array([r[6] for r in rows], dtype=np.int8)
@@ -131,10 +136,8 @@ class Data:
             raise RuntimeError("intersections 的回傳順序與 xid 不一致，索引會錯位")
 
         self.x_xy = np.array([[r[3], r[4]] for r in xrows])
-        self.x_fat = np.array([r[6] for r in xrows], dtype=np.int32)
         self.x_mw = np.array([r[10] for r in xrows], dtype=bool)
         self.x_info = [(r[1], r[2], r[8], r[9]) for r in xrows]   # lat, lon, name, cls
-        self.x_cls = np.array([r[9] for r in xrows], dtype=object)
 
         # 地面事故（行人與機車都到得了的）才進風險計算
         self.ground = ~self.a_mw
@@ -160,16 +163,20 @@ class Data:
         self.g_hour = self.a_hour[self.ground]
         self.g_mi = self.a_mi[self.ground]
         self.g_xid = self.a_xid[self.ground]
-        self.g_jlat = self.a_jlat[self.ground]
-        self.g_jlon = self.a_jlon[self.ground]
         self.g_lat = self.a_lat[self.ground]
         self.g_lon = self.a_lon[self.ground]
         self.g_cat = np.asarray([self.a_txt[i][0] or "" for i in self.g_ix], dtype=object)
+        self.g_rtype = np.asarray([self.a_txt[i][1] or "" for i in self.g_ix], dtype=object)
         self.g_atype = np.asarray([self.a_txt[i][2] or "" for i in self.g_ix], dtype=object)
         self.g_parties = np.asarray([self.a_txt[i][4] or "" for i in self.g_ix], dtype=object)
-        self.g_ped = (self.g_atype == "人與車") | np.fromiter(
-            ("行人" in str(parties) for parties in self.g_parties),
-            dtype=bool, count=len(self.g_parties))
+        # 判準集中在 src/features/risk.py，與 建立索引.py 共用同一支函式。
+        # 舊版在這裡自己寫一份、而且漏掉平交道：前端 isLevelCrossing() 會把
+        # 平交道事故濾掉不畫，後端卻算進分數與「圈內 N 件」，兩邊對不起來。
+        self.g_ped = np.fromiter(
+            (is_pedestrian_accident(atype, parties, rtype)
+             for atype, parties, rtype
+             in zip(self.g_atype, self.g_parties, self.g_rtype)),
+            dtype=bool, count=len(self.g_atype))
         self.g_a1ped = self.g_ped & np.fromiter(
             (str(cat).startswith("A1") for cat in self.g_cat), dtype=bool, count=len(self.g_cat))
 
@@ -183,11 +190,6 @@ class Data:
         # 第一層地圖只顯示至少有一件地面行人事故的聚合位置；全部事故件數仍保留
         # 在 x_cnt，供第二層計算「行人事故占此路口全部事故的比例」。
         self.x_keep = np.flatnonzero(self.x_ped_cnt > 0)
-        self.x_cnt_sorted = np.sort(self.x_ped_cnt[self.x_keep])
-        self.x_cnt_by_cls = {}
-        keep_cls = self.x_cls[self.x_keep]
-        for c in set(keep_cls):
-            self.x_cnt_by_cls[c] = np.sort(self.x_ped_cnt[self.x_keep[keep_cls == c]])
         self.acc_tree = cKDTree(self.g_xy)
 
         self.x_tree = cKDTree(self.x_xy[self.x_keep])
@@ -249,7 +251,7 @@ class Data:
             return 0.0
         idx = np.asarray(idx)
         d = np.hypot(self.w_mid[idx, 0] - x, self.w_mid[idx, 1] - y)
-        k = 1.0 - (d / r) ** 2
+        k = epanechnikov_weights(d, r)
         return float((self.w_len[idx] * k).sum() / 1000.0)
 
     def walk_risk(self, x, y, r=R_WALK, accident_mask=None):
@@ -262,7 +264,7 @@ class Data:
             idx = idx[accident_mask[idx]]
         if idx.size:
             d = np.hypot(self.g_xy[idx, 0] - x, self.g_xy[idx, 1] - y)
-            k = 1.0 - (d / r) ** 2
+            k = epanechnikov_weights(d, r)
             wsum = float((self.g_sev[idx] * k).sum())
         else:
             wsum = 0.0
@@ -366,34 +368,6 @@ class Data:
         safer_than = (lo + hi) / 2.0
         pct = 100.0 * (1.0 - safer_than / len(arr))
         return int(max(1, min(99, round(pct))))
-
-    def count_rank(self, count, cls=None):
-        """事故件數在「同道路等級」路口中的位置。
-
-        件數分布極度右偏（中位數 2 件），整數百分比會讓 30～40 件的路口全部
-        顯示「前 1%」，同一份清單五列一模一樣，等於沒有資訊。低於 10% 時
-        補一位小數才分得出高下。
-        """
-        arr = self.x_cnt_by_cls.get(cls) if cls else None
-        # 樣本太少就退回全市。省道只有 97 個路口、專用道路 17 個，拿它們自己
-        # 當分母做百分位沒有意義。但這時候比較基準已經不是「同級」了，要一起
-        # 回報給前端改標籤——否則畫面會宣稱一個它其實沒做的比較。
-        basis = "同級路口"
-        if arr is None or len(arr) < 200:
-            arr = self.x_cnt_sorted
-            basis = "全市路口"
-        above = len(arr) - int(np.searchsorted(arr, count, side="left"))
-        pct = 100.0 * above / len(arr)
-        if pct < 10:
-            text = "前 %.1f%%" % max(pct, 0.1)
-        else:
-            text = "前 %d%%" % int(round(pct))
-        if pct <= 35:
-            return {"text": text, "tone": "bad", "basis": basis}
-        if pct <= 62:
-            return {"text": "約中段", "tone": "mid", "basis": basis}
-        return {"text": "偏少", "tone": "ok", "basis": basis}
-
 
 # ------------------------------------------------------------------ 取樣
 def grid_points(bbox_ll, step, fwd):

@@ -18,7 +18,12 @@ import os
 
 import numpy as np
 
+from src.data.osm_path import readable_osm_path
+
 BASE = os.path.dirname(os.path.abspath(__file__))
+# libosmium 在 Windows 開不了含非 ASCII 字元的路徑（本專案資料夾叫「LH專案」），
+# 只會丟一句 "Open failed ... unknown error"。readable_osm_path() 會在需要時
+# 接一個純 ASCII 的暫存硬連結給它。詳見 src/data/osm_path.py。
 PBF = os.path.join(BASE, "raw", "taiwan-latest.osm.pbf")
 OUT = os.path.join(BASE, "市界.npz")
 TARGET = "桃園"
@@ -27,7 +32,7 @@ TARGET = "桃園"
 def find_relation():
     import osmium
     want = []
-    fp = (osmium.FileProcessor(PBF)
+    fp = (osmium.FileProcessor(readable_osm_path(PBF))
           .with_filter(osmium.filter.EntityFilter(osmium.osm.RELATION))
           .with_filter(osmium.filter.KeyFilter("boundary")))
     for rel in fp:
@@ -54,7 +59,7 @@ def find_relation():
 def collect_ways(way_ids):
     import osmium
     segs = {}
-    fp = (osmium.FileProcessor(PBF)
+    fp = (osmium.FileProcessor(readable_osm_path(PBF))
           .with_locations("flex_mem")
           .with_filter(osmium.filter.EntityFilter(osmium.osm.WAY))
           .with_filter(osmium.filter.IdFilter(way_ids)))
