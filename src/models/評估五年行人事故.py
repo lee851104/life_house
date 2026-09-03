@@ -4,7 +4,7 @@
 五年窗固定為 2021-07-01～2026-06-30，共 60 個完整月份。只納入涉及行人的
 A1 死亡事故與 A2 受傷事故；車與車、車輛本身不進入這份評估。
 
-前置：需先執行 評估步行網格.py 產生 reports/基準_200m_評估.npz，
+前置：需先執行 python -m src.models.評估步行網格 產生 reports/基準_200m_評估.npz，
       本腳本的網格比較段落會讀取它。
 
 輸出：reports/五年行人事故評估.json
@@ -13,20 +13,18 @@ from __future__ import annotations
 
 import csv
 import json
-import math
 import os
 import re
-from collections import Counter
 from datetime import date, datetime
 
 import numpy as np
 from pyproj import Transformer
 from scipy.spatial import cKDTree
 
-import 建立索引 as indexer
+from src.data import 建立索引 as indexer
+from src.features.risk import epanechnikov_weights
+from src.paths import ROOT as BASE
 
-
-BASE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(BASE, "reports", "五年行人事故評估.json")
 FROM_5Y, FROM_2Y, TO = "20210701", "20240701", "20260630"
 RADIUS_M = 500.0
@@ -90,7 +88,7 @@ def detailed_accidents() -> list[dict]:
     return [
         a for a in indexer.read_accidents()
         if not indexer.is_motorway(a)
-        and (a.get("atype") == "人與車" or any("行人" in v for v in a.get("veh", [])))
+        and indexer.is_pedestrian_accident(a)
     ]
 
 
@@ -138,7 +136,7 @@ def grid_stats(accidents: list[dict], grid: np.lib.npyio.NpzFile) -> tuple[dict,
             raw_5y.append(0); raw_2y.append(0); burden_5y.append(0.0); burden_2y.append(0.0)
             continue
         distance = np.hypot(points[idx, 0] - gx, points[idx, 1] - gy)
-        spatial = 1.0 - (distance / RADIUS_M) ** 2
+        spatial = epanechnikov_weights(distance, RADIUS_M)
         raw_5y.append(len(idx))
         raw_2y.append(int(recent[idx].sum()))
         burden_5y.append(float(np.sum(spatial * time_w[idx] * severity[idx])))
@@ -163,9 +161,10 @@ def grid_stats(accidents: list[dict], grid: np.lib.npyio.NpzFile) -> tuple[dict,
         i = int(np.argmin(np.hypot(grid_xy[:, 0] - cx, grid_xy[:, 1] - cy)))
         local = np.hypot(grid_xy[:, 0] - cx, grid_xy[:, 1] - cy) <= RADIUS_M
 
-        def local_safety_percentile(values: np.ndarray) -> int:
-            peers = values[local]
-            value = values[i]
+        def local_safety_percentile(values: np.ndarray,
+                                    neighbourhood=local, center=i) -> int:
+            peers = values[neighbourhood]
+            value = values[center]
             safer_than = np.sum(peers > value) + 0.5 * np.sum(peers == value)
             return int(round(100.0 * safer_than / len(peers)))
 

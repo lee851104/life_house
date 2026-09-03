@@ -915,7 +915,7 @@ var LH = (function () {
         zIndexOffset: on ? 800 : 500,
         bubblingMouseEvents: false
       })
-        .bindTooltip('<b>' + x.name + '</b><br>' + (on
+        .bindTooltip('<b>' + escapeHtml(x.name) + '</b><br>' + (on
                      ? (pedN
                         ? pedestrianRankLevel(pr) + '：附近前 ' + pr.top_percent + '%<br>' +
                           '比附近 ' + pr.higher_than_percent + '% 的路口嚴重<br>' +
@@ -986,10 +986,13 @@ var LH = (function () {
                 ['涉入車種', a.parties],
                 ['死亡／受傷', a.fatalities + ' 人 / ' + a.injuries + ' 人'],
                 ['道路型態', a.road_type], ['主要肇因', a.main_cause]];
-    return '<div class="apop"><div class="ah">' + x.name +
+    /* 路口名與各欄位都來自警政署 CSV 的自由文字（「發生地點」是承辦人員
+       手打的），出現 < 或 & 就會破版。檔案裡已經有 escapeHtml()，地名搜尋
+       結果也在用，這裡沒理由是唯一的例外。 */
+    return '<div class="apop"><div class="ah">' + escapeHtml(x.name) +
       '<span class="sev" style="background:' + tag[1] + '">' + tag[0] + '</span></div>' +
       rows.filter(function (r) { return r[1]; }).map(function (r) {
-        return '<b>' + r[0] + '</b>　' + r[1];
+        return '<b>' + r[0] + '</b>　' + escapeHtml(r[1]);
       }).join('<br>') + (sameCoordinateCount > 1
         ? '<br><b>相同公開座標</b>　共 ' + sameCoordinateCount + ' 件事故' : '') +
       '<div style="margin-top:5px;font-size:10.5px;color:#9CA3AF">' +

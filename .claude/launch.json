@@ -4,7 +4,15 @@
     {
       "name": "lifehouse",
       "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "uvicorn", "api:app", "--host", "127.0.0.1", "--port", "8000"],
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "src.serving.api:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
       "port": 8000
     }
   ]

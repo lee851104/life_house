@@ -2,7 +2,7 @@
 """從 data.gov.tw 下載 2021-07～2026-06 五年窗所需的 A1 / A2 道路交通事故資料。
 
 用法:
-    python 下載資料.py
+    python -m src.data.下載資料
 
 會建立:
     raw/          原始下載檔（ZIP / CSV）
@@ -18,9 +18,14 @@
 注意：即時檔（2026）只有當年度資料，且會隨時間往後補；年度檔（2024/2025）內容固定。
       A2 資料量大，完整下載＋解壓後約 1.4 GB。
 """
-import os, re, shutil, time, urllib.request, zipfile
+import os
+import re
+import shutil
+import time
+import urllib.request
+import zipfile
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+from src.paths import ROOT as BASE
 RAW = os.path.join(BASE, "raw")
 A1D = os.path.join(BASE, "data", "A1")
 A2D = os.path.join(BASE, "data", "A2")
@@ -124,4 +129,4 @@ if __name__ == "__main__":
     for mon, res in sorted(A2_LIVE.items()):                 # 2026 A2 分月
         extract(download(f"115_NPA_TMA2_{mon}.zip", A2_LIVE_DS, res), 2026, force_month=mon)
 
-    print("\n完成。接著可執行： python 篩選縣市.py 桃園市")
+    print("\n完成。接著可執行： python -m src.data.篩選縣市 桃園市")

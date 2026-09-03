@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""地名搜尋：把使用者打的字變成座標。由 api.py 的 /api/v3/geocode 使用。
+"""地名搜尋：把使用者打的字變成座標。由 src/serving/api.py 的 /api/v3/geocode 使用。
 
 比對的部分交給 SQLite FTS5 的 trigram tokenizer（等於中文子字串搜尋），
 這支模組負責兩件 FTS 做不了的事：
@@ -19,9 +19,10 @@ import os
 import re
 import sqlite3
 
-import 地名正規化 as N
+from src.features import 地名正規化 as N
+from src.paths import ROOT
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "地名.db")
+DB_PATH = os.path.join(ROOT, "地名.db")
 
 # 桃園 13 個行政區。使用者常常只打「中壢」不打「中壢區」。
 DISTRICTS = ["桃園區", "中壢區", "平鎮區", "八德區", "楊梅區", "蘆竹區",
