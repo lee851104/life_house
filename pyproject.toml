@@ -20,4 +20,26 @@ dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# 讓 `import src.*` 從專案根目錄解析，與 `python -m src.data.建立索引` 一致。
 pythonpath = ["."]
+
+# ---------------------------------------------------------------------------
+# ruff 設定原本在獨立的 ruff.toml，併進來讓依賴與工具設定只有 pyproject.toml
+# 一個入口（骨架要求「用 uv 管理依賴」，多一個設定檔就多一處會漂移的地方）。
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+exclude = [".venv", "data", "raw", "縣市", "notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+  "E501",   # 行長交給 formatter 處理，中文註解算字數會誤判
+  "B008",   # FastAPI 的 Depends()/Query() 就是要寫在預設值裡
+  "UP031",  # 全專案一致使用 % 格式化；中文字串混 f-string 反而更難讀
+  "UP032",  # 同上，.format() 的少數幾處維持一致
+  "UP009",  # 檔頭的 coding 宣告在 Windows 中文環境是刻意保留的訊號
+  "B905",   # zip(strict=) 是行為變更，資料管線不在送件前改
+  "E702",   # 少數 `print(...); return` 的緊湊寫法是刻意的
+]

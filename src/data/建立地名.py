@@ -27,7 +27,7 @@
     list 會再吃幾百 MB，所以邊掃邊分批寫進 addr_raw 暫存表，記憶體維持平坦。
 
 用法
-    python 建立地名.py            # 約 10 分鐘，需要 raw/taiwan-latest.osm.pbf
+    python -m src.data.建立地名            # 約 10 分鐘，需要 raw/taiwan-latest.osm.pbf
 """
 import os
 import re
@@ -37,10 +37,10 @@ from collections import defaultdict
 
 import numpy as np
 
-import 地名正規化 as N
+from src.features import 地名正規化 as N
+from src.paths import ROOT as BASE
 from src.data.osm_path import readable_osm_path
 
-BASE = os.path.dirname(os.path.abspath(__file__))
 # libosmium 在 Windows 開不了含非 ASCII 字元的路徑（本專案資料夾叫「LH專案」），
 # 只會丟一句 "Open failed ... unknown error"。readable_osm_path() 會在需要時
 # 接一個純 ASCII 的暫存硬連結給它。詳見 src/data/osm_path.py。

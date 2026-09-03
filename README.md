@@ -6,7 +6,11 @@
 > 其中涉及行人的有 11,726 件，主要分數使用扣掉國道／高架／隧道之後的
 > **11,711** 件（行人到不了的路段不計入走路生活圈）。
 
-**Demo：** 本機執行後開啟 <http://127.0.0.1:8000>（見 [6. 快速開始](#6-快速開始)）。尚未建立公開雲端 Demo。
+**線上 Demo：** <https://p215-2203-nb01.tail177cc6.ts.net>
+
+> **服務時段：每日 08:00–20:00（台北時間）。** 這個展示服務跑在一台實體機器上，
+> 該機器每晚斷電，時段外連線會失敗——那是預期行為，不是服務故障。
+> 想隨時查看請改用本機執行，見 [6. 快速開始](#6-快速開始)。
 
 > 下表為 **2026-09-02** 重建的實測值。OSM 圖資會更新、2026 年事故為即時檔會補登，
 > 重建出來的數字會有小幅差異（例如步行路網 ±數 km），屬正常現象。
@@ -100,6 +104,10 @@ Life House 把這些資料轉成走路生活圈分析：在選定位置的 500 �
               index.html（Leaflet 單頁，無框架無 build）
 ```
 
+> 圖中檔案的位置：`src/data/`（下載資料、篩選縣市、建立索引／路網／市界／地名）、
+> `src/models/`（建立基準、核心、地名查詢）、`src/serving/`（`api.py`、`static/index.html`）。
+> 完整結構見 [7. 深入閱讀 → 專案結構](#專案結構)。
+
 ### API
 
 | 端點 | 用途 |
@@ -108,7 +116,7 @@ Life House 把這些資料轉成走路生活圈分析：在選定位置的 500 �
 | `GET /api/v3/intersection` | 單一聚合位置底下的個別事故點 |
 | `GET /api/v3/geocode` | 地址／地標／路口文字搜尋 |
 | `GET /api/v3/meta` | 資料期間與筆數 |
-| `GET /` | `index.html` |
+| `GET /` | `src/serving/static/index.html` |
 
 後端啟動時把事故索引、步行路網與比較基準全部讀進記憶體，之後每次查詢都是 NumPy 陣列運算，不再讀磁碟。
 
@@ -152,8 +160,8 @@ K(d) = 1 - (d / 500m)²          Epanechnikov 距離核
 （第二步讀取第一步產生的 `reports/基準_200m_評估.npz`）：
 
 ```bash
-.venv/Scripts/python.exe 評估步行網格.py        # → reports/基準_200m_評估.npz
-.venv/Scripts/python.exe 評估五年行人事故.py    # → reports/五年行人事故評估.json
+.venv/Scripts/python.exe -m src.models.評估步行網格      # → reports/基準_200m_評估.npz
+.venv/Scripts/python.exe -m src.models.評估五年行人事故  # → reports/五年行人事故評估.json
 ```
 
 ### 5.5 路網要符合使用情境
@@ -173,7 +181,7 @@ K(d) = 1 - (d / 500m)²          Epanechnikov 距離核
 
 ### 5.8 可重建、可測試
 
-從下載到基準全程腳本化，資料更新後可完整重建。25 個測試涵蓋風險基本運算、行人與平交道判準、API 參數契約，以及一個**防未來資料洩漏**的時間切分測試（`tests/test_no_leakage.py`）。
+從下載到基準全程腳本化，資料更新後可完整重建。29 個測試涵蓋風險基本運算、行人與平交道判準、API 參數契約，以及一個**防未來資料洩漏**的時間切分測試（`tests/test_no_leakage.py`）。
 
 測試刻意驗證「正式路徑真的有呼叫共用函式」，而不只是驗證共用函式本身。
 風險公式（距離核、嚴重度、行人判準）只有 `src/features/risk.py` 一份，
@@ -186,7 +194,7 @@ $ uv run ruff check .
 All checks passed!
 
 $ uv run pytest
-25 passed
+29 passed
 ```
 
 ## 6. 快速開始
@@ -221,7 +229,7 @@ $ uv run pytest
 其他平台可直接執行：
 
 ```bash
-.venv/Scripts/python.exe -m uvicorn api:app --host 127.0.0.1 --port 8000
+.venv/Scripts/python.exe -m uvicorn src.serving.api:app --host 127.0.0.1 --port 8000
 ```
 
 ### 路徑 B：從零重建（uv，推薦）
@@ -241,15 +249,15 @@ make serve      # uvicorn src.serving.api:app --host 127.0.0.1 --port 8000
 >
 > ```bash
 > uv sync --all-groups
-> uv run python 下載資料.py
-> uv run python 篩選縣市.py 桃園市
-> uv run python 建立索引.py
-> uv run python 建立路網.py
-> uv run python 建立市界.py
-> uv run python 建立基準.py
-> uv run python 建立地名.py
+> uv run python -m src.data.下載資料
+> uv run python -m src.data.篩選縣市 桃園市
+> uv run python -m src.data.建立索引
+> uv run python -m src.data.建立路網
+> uv run python -m src.data.建立市界
+> uv run python -m src.models.建立基準
+> uv run python -m src.data.建立地名
 > uv run pytest
-> uv run uvicorn api:app --host 127.0.0.1 --port 8000
+> uv run uvicorn src.serving.api:app --host 127.0.0.1 --port 8000
 > ```
 
 > **Windows + 中文路徑的坑（已在程式裡繞過，但值得知道）**：`osmium` 的底層
@@ -269,25 +277,73 @@ python -m venv .venv
 .venv/Scripts/python.exe -m pip install -r requirements.txt
 ```
 
-依序執行（順序不可調換，`建立路網.py` 會先下載 PBF 供後續腳本使用）：
+依序執行（順序不可調換，`建立路網.py` 會先下載 PBF 供後續腳本使用）。
+一律以 `-m` 模組形式、在**專案根目錄**執行，原因見 [src/paths.py](src/paths.py)：
 
 ```bash
-.venv/Scripts/python.exe 下載資料.py
-.venv/Scripts/python.exe 篩選縣市.py 桃園市
-.venv/Scripts/python.exe 建立索引.py
-.venv/Scripts/python.exe 建立路網.py
-.venv/Scripts/python.exe 建立市界.py
-.venv/Scripts/python.exe 建立基準.py
-.venv/Scripts/python.exe 建立地名.py   # 選配，約 10 分鐘、需約 2 GB 記憶體
+.venv/Scripts/python.exe -m src.data.下載資料
+.venv/Scripts/python.exe -m src.data.篩選縣市 桃園市
+.venv/Scripts/python.exe -m src.data.建立索引
+.venv/Scripts/python.exe -m src.data.建立路網
+.venv/Scripts/python.exe -m src.data.建立市界
+.venv/Scripts/python.exe -m src.models.建立基準
+.venv/Scripts/python.exe -m src.data.建立地名   # 選配，約 10 分鐘、需約 2 GB 記憶體
 ```
 
 再啟動服務：
 
 ```bash
-.venv/Scripts/python.exe -m uvicorn api:app --host 127.0.0.1 --port 8000
+.venv/Scripts/python.exe -m uvicorn src.serving.api:app --host 127.0.0.1 --port 8000
 ```
 
 > 不建立 `地名.db` 仍可在地圖上點選並分析，只是無法用文字搜尋地址或地標。
+
+### 遠端展示（Tailscale Funnel）
+
+線上 Demo 沒有另建雲端環境，就是上面「路徑 A／B」跑起來的同一個本機服務，
+透過 [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) 對外提供：
+
+```text
+評審瀏覽器 ──HTTPS──> Tailscale Funnel ──> 127.0.0.1:8000（uvicorn）
+```
+
+這個做法的重點是 **uvicorn 仍然只綁 `127.0.0.1`**。Funnel 從本機環回介面取用服務，
+所以區網上的其他裝置一樣連不到——不必為了對外展示而把一個沒有認證的 API
+綁到 `0.0.0.0`（[Makefile](Makefile) 末尾的註解說明過為甚麼不該那樣做）。
+
+重現方式：
+
+```bash
+winget install Tailscale.Tailscale
+tailscale login          # 以瀏覽器完成帳號授權
+tailscale funnel --bg 8000
+```
+
+首次啟用 Funnel 需要在 Tailscale 管理主控台按下同意，CLI 會直接印出該連結。
+
+機器上電後由 Windows 工作排程器執行 [開機自動啟動.bat](開機自動啟動.bat)，
+把 uvicorn 帶起來並重新發布 Funnel（冷啟約 8–10 秒）。該腳本會先檢查 8000 埠
+是否已在服務，避免重複啟動搶同一個埠。
+
+排程刻意設定為**開機觸發、以 SYSTEM 身分執行**，而不是「登入時」觸發：
+展示機採「有電就開機」，若停在鎖定畫面沒有人登入，登入觸發的排程不會執行，
+網址就是死的。SYSTEM 不需要密碼，因此也不必為此儲存任何憑證。
+代價是服務完全在背景執行、沒有視窗，只能靠 `logs/serve.log` 或直接打網址確認。
+
+腳本同時會重新發布 Funnel。這是刻意的冗餘：即使 Tailscale 的 serve 設定沒有
+撐過重開機，開機腳本也會把公開網址放回去。
+
+> [開機自動啟動.bat](開機自動啟動.bat) 與 `啟動.bat` 一樣**必須是純 ASCII 且 CRLF**。cmd.exe 以主控台
+> 字碼頁（繁中 Windows 為 950／Big5）逐位元組解讀批次檔，註解裡只要出現一個
+> UTF-8 中文字就會讓解析器錯位，連 `rem` 都不再被認得，畫面上會冒出
+> 「'Life' 不是內部或外部命令」這類看不出原因的訊息。
+> [.gitattributes](.gitattributes) 已將 `*.bat`／`*.cmd` 釘為 `eol=crlf`，避免 clone
+> 時被全域的 `eol=lf` 改回去而再次失效。
+
+**已知限制**：服務公開後隨即會收到網際網路的例行漏洞掃描（`/v2/_catalog`、
+`/login.action`、`/telescope/requests` 之類）。這些路徑在本專案並不存在，一律回
+404；但 `POST /api/v3/analyze` 是公開且運算密集的端點，本專案未實作速率限制，
+不適合長期公開曝露。
 
 ### 建置產物
 
@@ -319,27 +375,62 @@ python -m venv .venv
 - 目前僅支援桃園市。市界邊緣仍會受界外路網與事故資料截斷影響。
 - OSM 標註可能遺漏新路或步行路網資訊。
 
-### 主要程式檔
+### 專案結構
+
+依可重現 ML 專案的標準骨架擺放：設定與程式碼分離、特徵工程是可測試的純函式、
+訓練（建基準）與推論（計分）同一份數學、服務層只有 FastAPI。
 
 ```text
-api.py             FastAPI 端點與前端靜態檔服務
-launcher.py        啟動.bat 實際執行的進入點；服務就緒後自動開啟瀏覽器
-核心.py            空間查詢、曝險校正、風險與百分位計算
-地名查詢.py        FTS5 中文地名查詢與排序
-index.html         Leaflet 單頁前端
-下載資料.py        從 data.gov.tw 下載 A1／A2
-篩選縣市.py        依發生地點篩出指定縣市
-建立索引.py        建立事故與聚合位置索引（事故索引.db）
-建立路網.py        解析 PBF 建立步行路網（路網.npz；另建機車網備用，查詢端不讀）
-建立市界.py        從 PBF 取出市界多邊形（市界.npz）
-建立基準.py        建立相對分數的比較基準（基準.npz）
-建立地名.py        建立地名搜尋索引（地名.db）
-地名正規化.py      建索引與查詢共用的正規化規則（臺／台、全半形、中文數字）
-評估步行網格.py    評估網格解析度，產生 reports/基準_200m_評估.npz
-評估五年行人事故.py  比較兩年與五年窗，產出 5.4 的證據表（需先跑上一支）
-src/               可匯入的純函式與套件入口（risk / validation / serving）
-tests/             pytest 測試
+life_house/
+├── README.md                    本檔
+├── MODEL_CARD.md                用途、限制、已知偏誤、不適用情境
+├── Makefile                     make setup / data / features / train / eval / serve
+├── pyproject.toml               依賴（uv）＋ ruff／pytest 設定
+├── requirements.txt             不使用 uv 時的 pip 清單
+├── .gitignore                   排除 data/、raw/、建置產物與 models/
+├── 啟動.bat                     雙擊啟動（純 ASCII + CRLF，原因見檔內註解）
+├── 開機自動啟動.bat             開機／排程帶起線上 Demo 並重發 Funnel
+├── configs/
+│   └── analysis.yaml            所有可調參數，程式中不硬編碼
+├── src/
+│   ├── paths.py                 專案根目錄的單一定義（建置產物都放根目錄）
+│   ├── data/                    下載、驗證、切分
+│   │   ├── 下載資料.py          從 data.gov.tw 下載 A1／A2
+│   │   ├── 篩選縣市.py          依發生地點篩出指定縣市
+│   │   ├── 建立索引.py          事故與聚合位置索引 → 事故索引.db
+│   │   ├── 建立路網.py          解析 PBF 建步行路網 → 路網.npz（另建機車網備用）
+│   │   ├── 建立市界.py          從 PBF 取市界多邊形 → 市界.npz
+│   │   ├── 建立地名.py          地名搜尋索引 → 地名.db
+│   │   ├── osm_path.py          繞過 libosmium 開不了中文路徑的問題
+│   │   └── validation.py        時間切分（防未來資料洩漏）
+│   ├── features/                特徵工程（純函式，可測試）
+│   │   ├── risk.py              距離核、嚴重度、行人與平交道判準
+│   │   └── 地名正規化.py        建索引與查詢共用（臺／台、全半形、中文數字）
+│   ├── models/                  訓練（建基準）與推論（計分）
+│   │   ├── 建立基準.py          市界內取樣的比較基準 → 基準.npz
+│   │   ├── 核心.py              空間查詢、曝險校正、風險與百分位計算
+│   │   ├── 地名查詢.py          FTS5 中文地名查詢與排序
+│   │   ├── 評估步行網格.py      網格解析度評估 → reports/基準_200m_評估.npz
+│   │   └── 評估五年行人事故.py  兩年 vs 五年窗比較 → reports/五年行人事故評估.json
+│   └── serving/                 FastAPI
+│       ├── api.py               端點與前端靜態檔服務
+│       ├── launcher.py          啟動.bat 的進入點；就緒後自動開瀏覽器
+│       └── static/index.html    Leaflet 單頁前端（無框架、無 build）
+├── tests/                       pytest，含 test_no_leakage.py
+├── notebooks/                   EDA 專用，不放訓練邏輯
+├── reports/
+│   ├── 五年行人事故評估.json    5.4 的證據表
+│   ├── 年度彙總.csv             各年度事故與傷亡彙總
+│   ├── 資料清單.csv             逐檔盤點（筆數、期間、欄位一致性）
+│   └── figures/                 圖表
+├── docs/                        README 用的截圖與標誌
+└── .github/workflows/ci.yml     ruff + pytest
 ```
+
+> 建置腳本一律以模組形式、在**專案根目錄**執行：`python -m src.data.建立索引`。
+> 直接跑 `python src/data/建立索引.py` 會失敗——`sys.path[0]` 會變成 `src/data`，
+> `import src.paths` 找不到。理由與根目錄的定位方式寫在 [src/paths.py](src/paths.py)。
+
 
 ## 8. 授權
 

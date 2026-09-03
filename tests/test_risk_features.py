@@ -86,7 +86,7 @@ def test_pedestrian_predicate_excludes_level_crossings():
 
 # ------------------------------------------- 正式路徑確實共用同一份定義
 def test_core_severity_delegates_to_shared_primitive():
-    import 核心
+    from src.models import 核心
 
     assert 核心.FATAL_W == CONFIG["fatality_weight"]
     assert np.allclose(核心.sev([0, 1, 2]),
@@ -94,7 +94,7 @@ def test_core_severity_delegates_to_shared_primitive():
 
 
 def test_core_radius_matches_config():
-    import 核心
+    from src.models import 核心
 
     assert 核心.R_WALK == CONFIG["walk_radius_m"]
     assert 核心.MONTHS == CONFIG["months"]
@@ -106,7 +106,7 @@ def test_index_builder_keeps_pedestrian_inside_truncated_parties():
     核心.py 判斷行人事故只看得到這個字串；行人被截掉的話，那件事故在分數、
     圈內件數與地圖上會同時消失。
     """
-    import 建立索引
+    from src.data import 建立索引
 
     veh = ["自小客車", "普通重型機車", "自小貨車", "大客車", "行人"]
     text = 建立索引.parties_text(veh)
@@ -116,7 +116,7 @@ def test_index_builder_keeps_pedestrian_inside_truncated_parties():
 
 
 def test_index_builder_and_core_agree_on_pedestrian_rule():
-    import 建立索引
+    from src.data import 建立索引
 
     crossing = {"atype": "人與車", "rtype": "平交道", "veh": ["行人"]}
     normal = {"atype": "人與車", "rtype": "交岔路", "veh": ["行人", "自小客車"]}

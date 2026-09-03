@@ -4,7 +4,7 @@
 五年窗固定為 2021-07-01～2026-06-30，共 60 個完整月份。只納入涉及行人的
 A1 死亡事故與 A2 受傷事故；車與車、車輛本身不進入這份評估。
 
-前置：需先執行 評估步行網格.py 產生 reports/基準_200m_評估.npz，
+前置：需先執行 python -m src.models.評估步行網格 產生 reports/基準_200m_評估.npz，
       本腳本的網格比較段落會讀取它。
 
 輸出：reports/五年行人事故評估.json
@@ -21,10 +21,10 @@ import numpy as np
 from pyproj import Transformer
 from scipy.spatial import cKDTree
 
-import 建立索引 as indexer
+from src.data import 建立索引 as indexer
 from src.features.risk import epanechnikov_weights
+from src.paths import ROOT as BASE
 
-BASE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(BASE, "reports", "五年行人事故評估.json")
 FROM_5Y, FROM_2Y, TO = "20210701", "20240701", "20260630"
 RADIUS_M = 500.0

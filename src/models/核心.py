@@ -36,8 +36,8 @@ import numpy as np
 import yaml
 
 from src.features.risk import accident_severity, epanechnikov_weights, is_pedestrian_accident
+from src.paths import ROOT as BASE
 
-BASE = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(BASE, "configs", "analysis.yaml"), encoding="utf-8") as f:
     ANALYSIS_CONFIG = yaml.safe_load(f)["analysis"]
 DB_PATH = os.path.join(BASE, "事故索引.db")
@@ -80,7 +80,12 @@ class Data:
         self.inv = Transformer.from_crs("EPSG:3826", "EPSG:4326", always_xy=True)
 
         # ---- 事故索引 ----
-        db = sqlite3.connect(DB_PATH)
+        # 唯讀開啟，與 地名查詢.py 的作法一致。這裡從頭到尾只有 SELECT，
+        # 但可寫模式下 SQLite 會在開檔時嘗試復原熱日誌——展示用的機器每天
+        # 被硬斷電，這個嘗試就有機會發生，而失敗的症狀是啟動時毫無關聯的
+        # 「database is locked」。唯讀模式不會走那條路徑。
+        db = sqlite3.connect("file:%s?mode=ro" % DB_PATH.replace("\\", "/"),
+                             uri=True)
         self.meta = dict(db.execute("SELECT key, value FROM meta"))
         rows = db.execute(
             "SELECT lat, lon, jlat, jlon, fatalities, injuries, hour, ym, "

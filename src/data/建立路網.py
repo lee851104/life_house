@@ -11,7 +11,7 @@
 座標系一律 EPSG:3826（TWD97 TM2），單位公尺。
 
 用法
-    python 建立路網.py            # pbf 不存在會自動下載（約 326 MB）
+    python -m src.data.建立路網            # pbf 不存在會自動下載（約 326 MB）
 """
 import math
 import os
@@ -22,8 +22,8 @@ import urllib.request
 import numpy as np
 
 from src.data.osm_path import readable_osm_path
+from src.paths import ROOT as BASE
 
-BASE = os.path.dirname(os.path.abspath(__file__))
 # libosmium 在 Windows 開不了含非 ASCII 字元的路徑（本專案資料夾叫「LH專案」），
 # 只會丟一句 "Open failed ... unknown error"。readable_osm_path() 會在需要時
 # 接一個純 ASCII 的暫存硬連結給它。詳見 src/data/osm_path.py。

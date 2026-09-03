@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-import api
+from src.serving import api
 
 
 def test_analyze_request_accepts_walk_only():

@@ -2,8 +2,8 @@
 """從 data/ 抽出指定縣市的 A1 / A2 事故資料，各合併成一個檔。
 
 用法:
-    python 篩選縣市.py              # 預設桃園市
-    python 篩選縣市.py 桃園市 新竹縣  # 可指定多個
+    python -m src.data.篩選縣市              # 預設桃園市
+    python -m src.data.篩選縣市 桃園市 新竹縣  # 可指定多個
 
 輸出: 縣市/桃園市_A1_2022-2026.csv、縣市/桃園市_A2_2022-2026.csv
 
@@ -21,7 +21,7 @@ import os
 import re
 import sys
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+from src.paths import ROOT as BASE
 YEAR = re.compile(r"^\d{4}$")
 LOC, UNIT = 6, 5          # 發生地點、處理單位名稱警局層
 csv.field_size_limit(10 ** 7)

@@ -18,5 +18,5 @@ if not exist ".venv\Scripts\python.exe" (
   exit /b 1
 )
 
-".venv\Scripts\python.exe" launcher.py
+".venv\Scripts\python.exe" -m src.serving.launcher
 if errorlevel 1 pause

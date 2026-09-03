@@ -8,7 +8,7 @@
   meta           期間、筆數、資料來源
 
 用法
-    python 建立索引.py
+    python -m src.data.建立索引
 """
 import csv
 import math
@@ -20,8 +20,8 @@ import time
 from collections import Counter, defaultdict
 
 from src.features.risk import is_pedestrian_accident as _is_pedestrian
+from src.paths import ROOT as BASE
 
-BASE = os.path.dirname(os.path.abspath(__file__))
 SRC = [os.path.join(BASE, "縣市", "桃園市_%s_2022-2026.csv" % k) for k in ("A1", "A2")]
 LEGACY_2021 = [
     ("A1", os.path.join(BASE, "data", "A1", "A1_2021.csv")),
@@ -119,7 +119,7 @@ def read_accidents():
     rows = 0
     for path in SRC:
         if not os.path.exists(path):
-            sys.exit("找不到 %s\n請先執行： python 篩選縣市.py 桃園市" % path)
+            sys.exit("找不到 %s\n請先執行： python -m src.data.篩選縣市 桃園市" % path)
         with open(path, encoding="utf-8-sig", newline="") as f:
             rd = csv.reader(f)
             next(rd)
@@ -158,7 +158,7 @@ def read_accidents():
     # 「行人」辨識。這批資料只補足五年窗的 2021-07～12。
     for category, path in LEGACY_2021:
         if not os.path.exists(path):
-            sys.exit("找不到 %s\n請先執行： python 下載資料.py" % path)
+            sys.exit("找不到 %s\n請先執行： python -m src.data.下載資料" % path)
         with open(path, encoding="utf-8-sig", newline="") as f:
             rd = csv.reader(f)
             next(rd)

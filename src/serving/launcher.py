@@ -18,7 +18,8 @@ from urllib.error import URLError
 
 import uvicorn
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+from src.paths import ROOT as BASE
+
 APP_URL = "http://127.0.0.1:8000/"
 META_URL = APP_URL + "api/v3/meta"
 
@@ -27,13 +28,13 @@ REQUIRED = ["事故索引.db", "路網.npz", "市界.npz", "基準.npz"]
 OPTIONAL = ["地名.db"]
 
 BUILD_STEPS = [
-    ("下載資料.py", "下載 A1／A2 事故資料"),
-    ("篩選縣市.py 桃園市", "篩出桃園市"),
-    ("建立索引.py", "→ 事故索引.db"),
-    ("建立路網.py", "→ 路網.npz"),
-    ("建立市界.py", "→ 市界.npz"),
-    ("建立基準.py", "→ 基準.npz"),
-    ("建立地名.py", "→ 地名.db（選配）"),
+    ("-m src.data.下載資料", "下載 A1／A2 事故資料"),
+    ("-m src.data.篩選縣市 桃園市", "篩出桃園市"),
+    ("-m src.data.建立索引", "→ 事故索引.db"),
+    ("-m src.data.建立路網", "→ 路網.npz"),
+    ("-m src.data.建立市界", "→ 市界.npz"),
+    ("-m src.models.建立基準", "→ 基準.npz"),
+    ("-m src.data.建立地名", "→ 地名.db（選配）"),
 ]
 
 
@@ -53,7 +54,7 @@ def check_artifacts():
     print("  A. 從 GitHub Release 下載後放到專案根目錄")
     print("  B. 自行重建，依序執行：")
     for script, note in BUILD_STEPS:
-        print(r"       .venv\Scripts\python.exe %-24s %s" % (script, note))
+        print(r"       .venv\Scripts\python.exe %-28s %s" % (script, note))
     return False
 
 
@@ -82,7 +83,7 @@ def main():
         return 1
     print("啟動中… 服務準備完成後會自動開啟 %s" % APP_URL)
     threading.Thread(target=open_when_ready, daemon=True).start()
-    uvicorn.run("api:app", host="127.0.0.1", port=8000)
+    uvicorn.run("src.serving.api:app", host="127.0.0.1", port=8000)
     return 0
 
 
