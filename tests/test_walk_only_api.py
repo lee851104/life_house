@@ -156,3 +156,37 @@ def test_intersection_statistics_handle_no_matching_accidents(busy_intersection)
     assert item['summary']['total'] == 0
     assert sum(item['summary']['types'].values()) == 0
     assert item['points'] == []
+
+
+def test_factors_report_observations_not_invented_scores(monkeypatch):
+    fake = SimpleNamespace(
+        g_hour=np.array([17, 18, 23, 0, 5, 6]), g_ix=np.arange(6),
+        a_txt=[('', '', '', '', '行人、大客車', '', '')] * 6,
+    )
+    monkeypatch.setattr(api, 'D', fake)
+    factors = {f['key']: f for f in api.risk_factors(np.arange(6), 2)}
+    assert factors['night']['count'] == 4
+    assert factors['night']['share'] == 66.7
+    assert factors['large_vehicle']['count'] == 6
+    assert factors['nearby_hotspots']['count'] == 2
+    assert all('score' not in f and 'weight' not in f for f in factors.values())
+    selected = api.risk_factors(np.array([1, 2]), 0)
+    assert next(f for f in selected if f['key'] == 'night')['share'] == 100
+    empty = api.risk_factors(np.array([], dtype=int), 0)
+    assert all(f['count'] == 0 and f['share'] is None for f in empty)
+
+
+def test_methodology_uses_current_comparison_group_and_config(monkeypatch):
+    fake = SimpleNamespace(ref={'walk': {'bands': [np.zeros(2), np.zeros(5)]}},
+                           band_of=lambda km, mode: 1)
+    monkeypatch.setattr(api, 'D', fake)
+    method = api.score_methodology(3.456, 17)
+    assert method['city_candidates'] == 5
+    assert method['city_band'] == method['city_bands'] == 2
+    assert method['local_candidates'] == 17
+    assert method['effective_network_km'] == 3.46
+    assert method['fatality_weight'] == api.core.FATAL_W
+    thresholds = method['confidence_thresholds']
+    assert api.confidence(thresholds['high']) == 'high'
+    assert api.confidence(thresholds['high'] - 1) == 'mid'
+    assert api.confidence(thresholds['mid'] - 1) == 'low'

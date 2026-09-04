@@ -395,6 +395,27 @@ a{color:var(--ride);text-decoration:none} a:hover{text-decoration:underline}
   .timefilter{align-items:flex-start}.timehead{width:100%}.tcustom{width:100%;margin-left:0;flex-wrap:wrap}
   .mapstyle{top:108px}.mtools{max-width:calc(100% - 180px)}
 }
+.compare-picker label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+.compare-picker input{width:100%;padding:9px;border:1px solid var(--border2);border-radius:7px;font:inherit}
+.compare-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.compare-actions button,.comparison button{border:1px solid var(--border2);border-radius:7px;background:#fff;padding:7px 10px;color:var(--text);font:inherit}
+.compare-picker .compare-actions button{flex:1;background:var(--walk-soft);color:#166534}
+.compare-actions button:disabled{opacity:.45;cursor:not-allowed}
+.comparison{width:calc(100% - 40px);max-width:1520px;margin:0 auto 14px;min-width:0}
+.comparison h2{font-size:18px}.comparison p,.score-basis p,.score-basis li{font-size:12px;color:var(--muted);line-height:1.7}
+.comparison .compare-note{margin:8px 0 14px}.comparison table{width:100%;border-collapse:collapse;table-layout:fixed}
+.comparison th,.comparison td{padding:13px 10px;text-align:left;border-bottom:1px solid var(--border);vertical-align:top;font-size:13px;overflow-wrap:anywhere}
+.comparison th:first-child{width:28%}.comparison thead th{background:var(--walk-soft);color:#166534}
+.comparison tbody th{font-weight:500;color:var(--muted)}.comparison strong{font-size:25px}
+.comparison small{display:block;font-size:11px;font-weight:400;color:var(--muted);margin-top:5px}
+.compare-place{display:block;font-size:16px;margin-top:7px;color:var(--text)}
+.score-basis{border-top:1px solid var(--border);margin-top:14px;padding-top:12px}
+.score-basis summary{cursor:pointer;font-size:13px;font-weight:600;color:#166534}
+.score-basis p{margin-top:10px}.score-basis ol{padding-left:20px}.score-basis li{margin-top:7px}
+#compareStatus{font-size:12px;color:var(--muted);min-height:1.5em;margin-top:6px}
+#observedFacts{font-size:12px;color:var(--muted);line-height:1.7;margin-top:12px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(max-width:640px){.comparison{padding:12px}.comparison th,.comparison td{padding:10px 6px;font-size:12px}.comparison strong{font-size:22px}.compare-place{font-size:13px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -504,6 +525,17 @@ a{color:var(--ride);text-decoration:none} a:hover{text-decoration:underline}
   <!-- ═══════════════ 面板 ═══════════════ -->
   <div class="panel">
 
+    <section class="card compare-picker" aria-label="設定比較地點">
+      <div class="ctitle">比較兩個地點</div>
+      <label for="compareName">先搜尋或點選地圖，再為這個位置命名</label>
+      <input id="compareName" maxlength="80" placeholder="例如：租屋 A、中原大學附近" disabled>
+      <div class="compare-actions">
+        <button type="button" id="compareAdd0" disabled>設為地點 A</button>
+        <button type="button" id="compareAdd1" disabled>設為地點 B</button>
+      </div>
+      <p id="compareStatus" role="status" aria-live="polite"></p>
+    </section>
+
     <!-- 空狀態 + CTA -->
     <section class="card" id="cardEmpty">
       <div class="empty" id="emptyText"></div>
@@ -541,6 +573,10 @@ a{color:var(--ride);text-decoration:none} a:hover{text-decoration:underline}
         <div class="rends"><span>0</span><span>50</span><span>100</span></div>
         <p style="font-size:11.5px;color:var(--muted);margin-top:9px" id="rulerNote"></p>
       </div>
+      <details class="score-basis">
+        <summary>這個百分位怎麼算？與哪些地方比較？</summary>
+        <div id="scoreBasis"></div>
+      </details>
     </section>
 
     <!-- 第二層：點選路口後取代第一層詳細內容 -->
@@ -588,6 +624,7 @@ a{color:var(--ride);text-decoration:none} a:hover{text-decoration:underline}
         <span class="previewtag">第一層</span></div>
       <div class="typeintro" id="factorWhy"></div>
       <div class="typelist" id="factorList"></div>
+      <p id="observedFacts"></p>
     </section>
 
     <!-- 關鍵數字 + 趨勢 -->
@@ -606,6 +643,13 @@ a{color:var(--ride);text-decoration:none} a:hover{text-decoration:underline}
 
   </div>
 </div>
+  <section class="card comparison" id="comparison" aria-labelledby="compareHeading">
+    <h2 id="compareHeading">兩地生活圈比較</h2>
+    <p id="compareTime" class="compare-note"></p>
+    <div id="compareTable"></div>
+    <p class="compare-note">同類地區百分位反映各自在路網條件相近地區中的位置；兩地分層可能不同，不代表直接風險倍數或安全機率。事故件數未除以實際行人流量，不能只憑件數判定哪裡更安全。</p>
+    <p>夜間指 18:00–翌日 06:00，僅計入所選時段與夜間重疊的事故；占比以所選時段的行人事故為分母。切換上方時段會同步更新兩地。</p>
+  </section>
 
 <footer class="ft">
   <b>本指數為相對風險指標，非政府官方安全評等。</b>
@@ -617,10 +661,11 @@ a{color:var(--ride);text-decoration:none} a:hover{text-decoration:underline}
     <span>底圖：內政部國土測繪中心臺灣通用電子地圖／正射影像</span>
     <span>授權：政府資料開放授權條款第 1 版</span>
     <span>資料期間：<b id="ftRange">—</b></span>
-    <span><a href="#" id="lnkMethod">安全係數怎麼算？</a></span>
+    <span><a href="#" id="lnkMethod">安全百分位怎麼算？</a></span>
   </div>
 </footer>
 
+<script src="/comparison.js"></script>
 <script>
 /* ==========================================================================
    0. 設定
@@ -636,12 +681,12 @@ var CFG = {
   range: { from: '2021-07-01', to: '2026-06-30' }
 };
 
-var GRADE = [[80, '非常安全', 'var(--g1)'], [60, '相對安全', 'var(--g2)'],
-             [40, '中等風險', 'var(--g3)'], [20, '較高風險', 'var(--g4)'], [0, '高風險', 'var(--g5)']];
+var GRADE = [[80, '相對風險較低', 'var(--g1)'], [60, '相對風險偏低', 'var(--g2)'],
+             [40, '接近中間', 'var(--g3)'], [20, '相對風險偏高', 'var(--g4)'], [0, '相對風險較高', 'var(--g5)']];
 var POINT_COLORS = { a1ped: '#991B1B', pedacc: '#F97316', otheracc: '#64748B' };
 function gradeOf(s) { for (var i = 0; i < GRADE.length; i++) if (s >= GRADE[i][0]) return GRADE[i]; return GRADE[4]; }
 function localGradeOf(s) {
-  if (s >= 80) return ['很安全', 'var(--g1)'];
+  if (s >= 80) return ['附近相對風險較低', 'var(--g1)'];
   if (s >= 60) return ['較安全', 'var(--g2)'];
   if (s >= 40) return ['普通', 'var(--g3)'];
   if (s >= 20) return ['需留意', 'var(--g4)'];
@@ -697,7 +742,7 @@ function escapeHtml(s) {
 var LH = (function () {
   'use strict';
 
-  var S = { origin: null, inBounds: true, data: null, focus: -1, compact: false,
+  var S = { origin: null, originName: '', inBounds: true, data: null, focus: -1, compact: false,
             timeStart: 0, timeHours: 24, causeFilter: '' };
   var map, baseLayers, activeBase, gCandidates, gRings, gMarks, gPts, mOrigin;
   var analyzeSeq = 0, analyzeController = null;
@@ -747,9 +792,11 @@ var LH = (function () {
   }
 
   /* ---------- 起點 / 終點 ---------- */
-  function setOrigin(lat, lon) {
+  function setOrigin(lat, lon, name) {
     cancelAnalyze();
     S.origin = [lat, lon];
+    S.originName = name || lat.toFixed(5) + ', ' + lon.toFixed(5);
+    Comparison.setCurrent(null, '', null);
     S.inBounds = inBox(lat, lon);
     S.data = null; S.focus = -1; S.causeFilter = '';
     if (map) {
@@ -1041,6 +1088,7 @@ var LH = (function () {
   function reset() {
     cancelAnalyze();
     S.origin = S.data = null;
+    Comparison.setCurrent(null, '', null);
     S.focus = -1; S.inBounds = true; S.causeFilter = '';
     if (map) {
       if (mOrigin) { map.removeLayer(mOrigin); mOrigin = null; }
@@ -1068,6 +1116,9 @@ var LH = (function () {
 
   function analyze() {
     if (!ready()) return;
+    S.data = null;
+    Comparison.setCurrent(null, '', null);
+    clearResults();
     var seq = ++analyzeSeq;
     if (analyzeController) analyzeController.abort();
     analyzeController = typeof AbortController === 'undefined' ? null : new AbortController();
@@ -1097,6 +1148,7 @@ var LH = (function () {
            交給 UI.error（它已備好各 code 的中文文案）*/
         if (d && d.error) { UI.error(d); return; }
         S.data = d; $('bSize').hidden = false; setCompact(true);
+        Comparison.setCurrent(S.origin, S.originName, d);
         UI.render(d); drawResult();
       })
       .catch(function (err) {
@@ -1134,6 +1186,7 @@ var LH = (function () {
     S.timeStart = Math.max(0, Math.min(23, Number(start) || 0));
     S.timeHours = Math.max(1, Math.min(24, Number(hours) || 24));
     syncTimeControls();
+    Comparison.setTime(S.timeStart, S.timeHours);
     if (ready()) {
       S.focus = -1; S.causeFilter = '';
       $('legendArea').hidden = false;
@@ -1198,15 +1251,15 @@ var LH = (function () {
     });
     $('lnkMethod').addEventListener('click', function (e) {
       e.preventDefault();
-      alert('安全係數計算流程\n\n' +
-        '① 事故資料清洗與去重（一件事故有多位當事者，只算 1 件）\n' +
-        '② 排除國道、快速道路、高架與隧道（行人無法通行）\n' +
-        '③ 距離平滑加權（Epanechnikov 核，500m 與 501m 不會跳分）\n' +
-        '④ 嚴重度加權（一件死亡事故 = 21，其餘一律 = 1）\n' +
-        '⑤ 曝險標準化（分子分母用同一個核加權，校正「人多 ≠ 危險」）\n' +
-        '⑥ 小樣本收縮（證據量用路網長度，避免小圈就給極端分數）\n' +
-        '⑦ 依曝險分 8 層，與同層地區比較取百分位 → 1–99 分\n\n' +
-        '註：目前沒有時間衰減，期間內每一件事故權重相同。');
+      if (!S.data) {
+        $('compareStatus').textContent = '請先搜尋或點選位置，分析完成後可查看本次計算依據。';
+        $('gq').focus();
+        return;
+      }
+      clearFocus();
+      var details = document.querySelector('.score-basis');
+      details.open = true;
+      details.scrollIntoView({behavior: 'smooth', block: 'center'});
     });
   }
 
@@ -1254,7 +1307,7 @@ var LH = (function () {
     $('gq').value = r.name;
     $('gclear').hidden = false;
     gsHide();
-    setOrigin(r.lat, r.lon);
+    setOrigin(r.lat, r.lon, r.name);
     if (map) map.setView([r.lat, r.lon], Math.max(map.getZoom(), 16));
   }
 
@@ -1318,6 +1371,7 @@ var LH = (function () {
   }
 
   document.addEventListener('DOMContentLoaded', function () {
+    Comparison.init();
     init(); bind(); bindSearch(); UI.mode(); sync();
     /* CFG.range 只是後端還沒回來之前的預設值。真正的期間以 /api/v3/meta 為準，
        否則重建索引換了資料期間，畫面會靜靜地繼續顯示寫死的舊日期。 */
@@ -1374,13 +1428,13 @@ var UI = (function () {
     $('dialArc').style.stroke = lg[1];
     $('scNum').textContent = primary;
     $('scNum').style.color = lg[1];
-    $('scUnit').textContent = hasLocal ? '%' : '／100 分';
+    $('scUnit').textContent = '%';
     $('scGrade').textContent = lg[0];
     $('scGrade').style.color = lg[1];
     $('scPlain').innerHTML = hasLocal
-      ? '<b>比附近 ' + primary + '% 的區域安全</b>' +
-        '<span>綠色區域較安全，紅色區域需要多留意。</span>'
-      : '<b>附近資料不足</b><span>改以桃園同類地區分數呈現。</span>';
+      ? '<b>附近安全百分位 ' + primary + '%</b>' +
+        '<span>歷史加權風險低於附近約 ' + primary + '% 的比較格；不是安全機率。</span>'
+      : '<b>桃園同類地區百分位 ' + primary + '%</b><span>附近比較資料不足，改與路網條件相近的桃園基準格比較。</span>';
 
     var cf = { high: ['var(--g1)', '資料充足'], mid: ['var(--g3)', '資料尚可'],
                low: ['var(--g5)', '資料偏少，僅供參考'] }[sc.confidence] || ['var(--faint)', '—'];
@@ -1391,12 +1445,13 @@ var UI = (function () {
     /* 百分位標尺 */
     var you = $('rYou');
     you.style.left = primary + '%';
-    you.setAttribute('data-v', primary + (hasLocal ? '%' : ' 分'));
+    you.setAttribute('data-v', primary + '%');
     you.style.borderColor = lg[1];
-    $('rMid').textContent = hasLocal ? '附近中間值' : '桃園中間值';
+    $('rMid').textContent = hasLocal ? '附近中間值' : '同類地區中間值';
     $('rulerNote').textContent = hasLocal
       ? '只和地圖中的附近區域相比；百分比越高，代表相對安全。'
-      : '附近比較資料不足，這是與桃園同類地區相比的分數。';
+      : '附近比較資料不足，這是與桃園同類地區相比的百分位。';
+    Comparison.explain(d);
 
     /* 關鍵數字 */
     $('nv1').innerHTML = d.stats.accidents + '<s>件</s>';
