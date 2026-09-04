@@ -22,7 +22,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from src.features.risk import involves_large_vehicle
+from src.features.risk import involves_large_vehicle, is_level_crossing, is_pedestrian_accident
 from src.models import 地名查詢 as geoq
 from src.models import 核心 as core
 
@@ -32,6 +32,8 @@ HTML = os.path.join(BASE, "static", "index.html")
 SHOW_X = 12          # 回傳（並畫在地圖上）的路口數上限
 HI_COUNT = 6         # 行人事故路口分布約第 95 百分位；與前端 tierOf() 一致
 NEAR_HOT = 300.0     # 「鄰近事故集中路口」的距離門檻（公尺）
+CONFIDENCE_HIGH = 30
+CONFIDENCE_MID = 12
 # 資料窗長度的中文標籤，由 configs/analysis.yaml 的 months 推導。
 # 寫死害過一次：資料窗從 2 年改成 5 年時，前端 12 處都改了，只有 risk_factors()
 # 裡的兩句沒改，UI 會拿五年的件數配上「近兩年」的說明。
@@ -121,7 +123,7 @@ def trend_of(gidx):
 
 
 def confidence(n):
-    return ("high" if n >= 30 else "mid" if n >= 12 else "low")
+    return ("high" if n >= CONFIDENCE_HIGH else "mid" if n >= CONFIDENCE_MID else "low")
 
 
 def hour_mask(start=0, hours=24):
@@ -210,10 +212,35 @@ def points_of(xid, limit=400, mask=None):
     return out
 
 
+def intersection_details(xid, mask=None):
+    """統計完整時段資料；地圖只需要行人明細，且不截斷行人事故。"""
+    points = [p for p in points_of(xid, limit=None, mask=mask)
+              if not is_level_crossing(p["accident_type"], p["road_type"])]
+    pedestrians = [p for p in points if is_pedestrian_accident(
+        p["accident_type"], p["parties"], p["road_type"])]
+    types = {"ped": 0, "vehicle": 0, "single": 0, "other": 0}
+    for point in points:
+        kind = point["accident_type"] or ""
+        if "人與" in kind:
+            key = "ped"
+        elif "車與車" in kind:
+            key = "vehicle"
+        elif any(word in kind for word in ("車輛本身", "汽車本身", "機車本身", "車本身")):
+            key = "single"
+        else:
+            key = "other"
+        types[key] += 1
+    return {
+        "summary": {"total": len(points), "pedestrian": len(pedestrians),
+                    "types": types},
+        "points": pedestrians,
+    }
+
+
 def pack_x(rows, with_points=True, ped_ranks=None, stats=None, mask=None):
     """rows = [(x_keep 內的位置, 距離公尺)]"""
     out = []
-    # 第一層圓圈只顯示行人事故件數；全部事故仍保留在 points 供第二層算占比。
+    # 第一層顯示行人事故件數；第二層比例由完整資料的 summary 提供。
     counts = D.x_ped_cnt if stats is None else stats[1]
     for k, dist in rows:
         xi = int(D.x_keep[k])
@@ -227,7 +254,7 @@ def pack_x(rows, with_points=True, ped_ranks=None, stats=None, mask=None):
         if ped_ranks is not None:
             item["pedestrian_rank"] = ped_ranks.get(xi)
         if with_points:
-            item["points"] = points_of(xi, mask=mask)
+            item.update(intersection_details(xi, mask=mask))
         out.append(item)
     return out
 
@@ -289,10 +316,11 @@ def analyze_walk(lat, lon, time_start=0, time_hours=24):
                   "local_candidates": local_candidates,
                   "local_grid_m": int(core.LOCAL_RANK_GRID),
                   "local_regions": local_regions},
+        "methodology": score_methodology(km, local_candidates),
         "stats": {"accidents": int(ped_gidx.size), "fatalities": fat, "injuries": inj,
                   "scope": "人與車事故"},
         "accident_types": accident_types_of(gidx),
-        "factors": risk_factors(gidx, score, hotN),
+        "factors": risk_factors(ped_gidx, hotN),
         "intersections": xs,
         "trend": trend_of(ped_gidx),
         "time_filter": {"start": int(time_start), "hours": int(time_hours),
@@ -305,8 +333,23 @@ def analyze_walk(lat, lon, time_start=0, time_hours=24):
     }
 
 
-def clamp_score(value):
-    return int(round(max(0, min(100, value))))
+def score_methodology(km, local_candidates):
+    """回傳本次比較母體與實際設定，避免說明文字和計算漂移。"""
+    band = D.band_of(km, "walk")
+    return {
+        "radius_m": core.R_WALK,
+        "local_grid_m": core.LOCAL_RANK_GRID,
+        "local_candidates": int(local_candidates),
+        "city_band": band + 1,
+        "city_bands": len(D.ref["walk"]["bands"]),
+        "city_candidates": len(D.ref["walk"]["bands"][band]),
+        "effective_network_km": round(km, 2),
+        "fatality_weight": core.FATAL_W,
+        "recency_weights": core.RECENCY_WEIGHTS.tolist(),
+        "shrinkage_km": core.SHRINK_KM_WALK,
+        "minimum_network_km": core.MIN_KM,
+        "confidence_thresholds": {"high": CONFIDENCE_HIGH, "mid": CONFIDENCE_MID},
+    }
 
 
 def accident_types_of(gidx):
@@ -335,39 +378,26 @@ def accident_types_of(gidx):
     ]
 
 
-def risk_factors(gidx, score, hot_n):
+def risk_factors(gidx, hot_n):
     """把事故資料可直接支持的原因拆成可讀指標。
 
     不以事故資料猜測人行道、號誌等尚未收錄的道路設施；「行人涉入」與
     「大型車涉入」只描述本次範圍內的事故紀錄。
     """
-    n = max(1, int(gidx.size))
+    n = int(gidx.size)
     parties = [D.a_txt[D.g_ix[i]][4] or "" for i in gidx]
-    ped = sum("行人" in s for s in parties)
     large = sum(involves_large_vehicle(s) for s in parties)
-    night = float(np.isin(D.g_hour[gidx], list(NIGHT_H)).mean()) if gidx.size else 0.0
-
-    factors = [
-        {"icon": "💥", "label": "事故風險", "weight": 30, "score": clamp_score(score),
-         "reason": "相較桃園市同類地區的加權事故風險"},
-        {"icon": "🚦", "label": "路口風險", "weight": 22,
-         "score": clamp_score(90 - hot_n * 14),
-         "reason": ("300 公尺內有 %d 處事故集中的路口" % hot_n if hot_n
-                    else "300 公尺內未見事故集中的路口")},
-        {"icon": "🚚", "label": "大型車涉入", "weight": 15,
-         "score": clamp_score(82 - large / n * 230),
-         "reason": "%s %d／%d 件事故有大型車涉入" % (WINDOW_LABEL, large, int(gidx.size))},
-        {"icon": "🌙", "label": "夜間事故", "weight": 13,
-         "score": clamp_score(84 - night * 70),
-         "reason": "夜間（18–06）事故占 %d%%" % round(night * 100)},
-        {"icon": "🚶", "label": "行人涉入", "weight": 20,
-         "score": clamp_score(88 - ped / n * 260),
-         "reason": "%s %d／%d 件事故有行人涉入" % (WINDOW_LABEL, ped, int(gidx.size))},
+    night = int(np.isin(D.g_hour[gidx], list(NIGHT_H)).sum())
+    return [
+        {"key": "nearby_hotspots", "label": "300 公尺內事故集中路口", "count": hot_n,
+         "share": None, "reason": "所選時段至少 %d 件行人事故的路口" % HI_COUNT},
+        {"key": "large_vehicle", "label": "大型車涉入", "count": large,
+         "share": round(100 * large / n, 1) if n else None,
+         "reason": "占所選時段的 %d 件行人事故；不是發生機率" % n},
+        {"key": "night", "label": "夜間行人事故（18–06）", "count": night,
+         "share": round(100 * night / n, 1) if n else None,
+         "reason": "所選時段與 18–06 的交集，占所選時段的 %d 件行人事故" % n},
     ]
-    for item in factors:
-        item["tone"] = "bad" if item["score"] < 60 else "mid" if item["score"] < 75 else "ok"
-        item["status"] = "風險偏高" if item["score"] < 60 else "需注意" if item["score"] < 75 else "尚可"
-    return factors
 
 
 # ------------------------------------------------------------------ 路由
@@ -427,3 +457,15 @@ def meta():
 @app.get("/")
 def root():
     return FileResponse(HTML, media_type="text/html; charset=utf-8")
+
+
+@app.get("/comparison.js")
+def comparison_script():
+    return FileResponse(os.path.join(BASE, "static", "comparison.js"),
+                        media_type="text/javascript; charset=utf-8")
+
+
+@app.get("/places.js")
+def places_script():
+    return FileResponse(os.path.join(BASE, "static", "places.js"),
+                        media_type="text/javascript; charset=utf-8")

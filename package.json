@@ -1,0 +1,12 @@
+{
+  "name": "lifehouse-browser-tests",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/test_comparison.cjs tests/test_places.cjs",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2",
+    "leaflet": "1.9.4"
+  }
+}
