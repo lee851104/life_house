@@ -109,3 +109,50 @@ def test_first_layer_marker_count_uses_pedestrian_accidents(monkeypatch):
 def test_window_label_uses_chinese_numeral_like_the_frontend():
     """index.html 有 12 處寫「近五年」；後端輸出「近5年」會讓同一畫面兩種寫法並存。"""
     assert api.WINDOW_LABEL == "近五年"
+
+
+@pytest.fixture
+def busy_intersection(monkeypatch):
+    # 行人事故全部排在第 400 筆以後，避免測試只驗到原本可見的明細。
+    rows = ([('A2', '交岔路', '車與車', '原因', '')] * 410
+            + [('A1', '交岔路', '人與車', '未禮讓行人', '行人')] * 420
+            + [('A2', '交岔路', '車輛本身', '原因', '')]
+            + [('A2', '交岔路', '未知', '原因', '')]
+            + [('A1', '平交道', '人與車', '原因', '行人')])
+    n = len(rows)
+    fake = SimpleNamespace(
+        g_xid=np.zeros(n, dtype=int), g_ix=np.arange(n),
+        g_lat=np.full(n, 24.95), g_lon=np.full(n, 121.24),
+        g_fat=np.zeros(n, dtype=int), g_inj=np.ones(n, dtype=int),
+        a_txt=[(*r, '20260801', '220000') for r in rows],
+        g_hour=np.array([12] * 410 + [22] * (n - 410)),
+        x_keep=np.array([0]), x_info=[(24.95, 121.24, '測試路口', '市區道路')],
+        x_ped_cnt=np.array([420]),
+    )
+    monkeypatch.setattr(api, 'D', fake)
+    return fake
+
+
+def test_busy_intersection_has_full_statistics_and_pedestrian_points(busy_intersection):
+    item = api.pack_x([(0, 10.0)])[0]
+    assert item['summary'] == {
+        'total': 832, 'pedestrian': 420,
+        'types': {'ped': 420, 'vehicle': 410, 'single': 1, 'other': 1},
+    }
+    assert len(item['points']) == 420
+    assert all(p['main_cause'] == '未禮讓行人' for p in item['points'])
+    assert item['count'] == item['summary']['pedestrian']
+
+
+def test_full_intersection_statistics_respect_time_mask(busy_intersection):
+    item = api.intersection_details(0, mask=api.hour_mask(22, 8))
+    assert item['summary']['total'] == 422
+    assert item['summary']['types']['vehicle'] == 0
+    assert len(item['points']) == item['summary']['pedestrian'] == 420
+
+
+def test_intersection_statistics_handle_no_matching_accidents(busy_intersection):
+    item = api.intersection_details(0, mask=api.hour_mask(6, 1))
+    assert item['summary']['total'] == 0
+    assert sum(item['summary']['types'].values()) == 0
+    assert item['points'] == []

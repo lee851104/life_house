@@ -47,12 +47,12 @@ OSM 圖資會更新、2026 年事故屬即時檔會補登，重建的數字會�
 ## 2. 快速開始
 
 建置產物（索引、路網、基準、地名共約 153 MB）**不進版控**，改以
-[GitHub Release](../../releases/latest) 提供，打包成單一 ZIP（壓縮後 71 MB）。
+[GitHub Release](https://github.com/ruru0109lee-cpu/lifehouse/releases/tag/v1.0.0) 提供，打包成單一 ZIP（壓縮後 71 MB）。
 所以有兩條路：下載現成產物（數分鐘），或從政府開放資料自行重建（約一小時）。
 
 ### 路徑 A：下載建置產物（最快）
 
-1. 到 [Releases](../../releases/latest) 下載 `lifehouse-data-v1.0.0.zip`，解壓後把裡面
+1. 下載 [lifehouse-data-v1.0.0.zip](https://github.com/ruru0109lee-cpu/lifehouse/releases/download/v1.0.0/lifehouse-data-v1.0.0.zip)，解壓後把裡面
    5 個檔案全部放進專案根目錄（與 `啟動.bat` 同一層）。
 2. 建立環境：
 

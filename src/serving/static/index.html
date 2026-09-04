@@ -901,7 +901,8 @@ var LH = (function () {
     (d.intersections || []).forEach(function (x, i) {
       var on = (i === S.focus);
       var pts = (x.points || []).filter(function (a) { return !isLevelCrossing(a); });
-      var pedN = pts.filter(isPedestrian).length, pedPct = percent(pedN, pts.length);
+      var pedN = x.summary.pedestrian, total = x.summary.total;
+      var pedPct = percent(pedN, total);
       var pr = x.pedestrian_rank || {};
       var markerPosition = [x.lat, x.lon];
       if (on) {
@@ -919,7 +920,7 @@ var LH = (function () {
                      ? (pedN
                         ? pedestrianRankLevel(pr) + '：附近前 ' + pr.top_percent + '%<br>' +
                           '比附近 ' + pr.higher_than_percent + '% 的路口嚴重<br>' +
-                          '近五年 ' + pedN + '／' + pts.length + ' 件與行人有關（' + pedPct + '%）<br>' +
+                          '近五年 ' + pedN + '／' + total + ' 件與行人有關（' + pedPct + '%）<br>' +
                           (pr.a1_pedestrian_accidents
                             ? '其中 A1 行人事故 ' + pr.a1_pedestrian_accidents + ' 件<br>' : '')
                         : '近五年沒有行人事故紀錄<br>')
@@ -1469,10 +1470,8 @@ var UI = (function () {
     $('xCauseStatus').hidden = true;
 
     var points = (x.points || []).filter(function (a) { return !isLevelCrossing(a); });
-    var total = points.length;
-    var a1Ped = points.filter(function (a) { return pointKind(a) === 'a1ped'; }).length;
-    var nonA1Ped = points.filter(function (a) { return pointKind(a) === 'pedacc'; }).length;
-    var pedN = a1Ped + nonA1Ped, pedPct = percent(pedN, total);
+    var total = x.summary.total;
+    var pedN = x.summary.pedestrian, pedPct = percent(pedN, total);
 
     $('xDetailTitle').textContent = x.name;
     $('xDist').textContent = x.dist != null ? '距中心 ' + x.dist + ' 公尺' : '';
@@ -1489,11 +1488,11 @@ var UI = (function () {
     var types = [
       { key: 'ped', label: '人與車', color: '#DC2626' },
       { key: 'vehicle', label: '車與車', color: '#2563EB' },
-      { key: 'single', label: '車輛本身', color: '#7C3AED' }
+      { key: 'single', label: '車輛本身', color: '#7C3AED' },
+      { key: 'other', label: '其他／未分類', color: '#6B7280' }
     ];
-    var counts = { ped: 0, vehicle: 0, single: 0 };
-    points.forEach(function (a) { var k = typeKind(a); if (counts[k] != null) counts[k]++; });
-    var typedTotal = counts.ped + counts.vehicle + counts.single;
+    var counts = x.summary.types;
+    var typedTotal = total;
     var typeShares = apportionedShares(types, counts, typedTotal);
     var deg = 0, stops = [];
     types.forEach(function (t) {

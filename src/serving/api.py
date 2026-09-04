@@ -22,7 +22,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from src.features.risk import involves_large_vehicle
+from src.features.risk import involves_large_vehicle, is_level_crossing, is_pedestrian_accident
 from src.models import 地名查詢 as geoq
 from src.models import 核心 as core
 
@@ -210,10 +210,35 @@ def points_of(xid, limit=400, mask=None):
     return out
 
 
+def intersection_details(xid, mask=None):
+    """統計完整時段資料；地圖只需要行人明細，且不截斷行人事故。"""
+    points = [p for p in points_of(xid, limit=None, mask=mask)
+              if not is_level_crossing(p["accident_type"], p["road_type"])]
+    pedestrians = [p for p in points if is_pedestrian_accident(
+        p["accident_type"], p["parties"], p["road_type"])]
+    types = {"ped": 0, "vehicle": 0, "single": 0, "other": 0}
+    for point in points:
+        kind = point["accident_type"] or ""
+        if "人與" in kind:
+            key = "ped"
+        elif "車與車" in kind:
+            key = "vehicle"
+        elif any(word in kind for word in ("車輛本身", "汽車本身", "機車本身", "車本身")):
+            key = "single"
+        else:
+            key = "other"
+        types[key] += 1
+    return {
+        "summary": {"total": len(points), "pedestrian": len(pedestrians),
+                    "types": types},
+        "points": pedestrians,
+    }
+
+
 def pack_x(rows, with_points=True, ped_ranks=None, stats=None, mask=None):
     """rows = [(x_keep 內的位置, 距離公尺)]"""
     out = []
-    # 第一層圓圈只顯示行人事故件數；全部事故仍保留在 points 供第二層算占比。
+    # 第一層顯示行人事故件數；第二層比例由完整資料的 summary 提供。
     counts = D.x_ped_cnt if stats is None else stats[1]
     for k, dist in rows:
         xi = int(D.x_keep[k])
@@ -227,7 +252,7 @@ def pack_x(rows, with_points=True, ped_ranks=None, stats=None, mask=None):
         if ped_ranks is not None:
             item["pedestrian_rank"] = ped_ranks.get(xi)
         if with_points:
-            item["points"] = points_of(xi, mask=mask)
+            item.update(intersection_details(xi, mask=mask))
         out.append(item)
     return out
 
