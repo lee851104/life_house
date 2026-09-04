@@ -463,3 +463,9 @@ def root():
 def comparison_script():
     return FileResponse(os.path.join(BASE, "static", "comparison.js"),
                         media_type="text/javascript; charset=utf-8")
+
+
+@app.get("/places.js")
+def places_script():
+    return FileResponse(os.path.join(BASE, "static", "places.js"),
+                        media_type="text/javascript; charset=utf-8")

@@ -415,6 +415,13 @@ a{color:var(--ride);text-decoration:none} a:hover{text-decoration:underline}
 #compareStatus{font-size:12px;color:var(--muted);min-height:1.5em;margin-top:6px}
 #observedFacts{font-size:12px;color:var(--muted);line-height:1.7;margin-top:12px}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.place-tools{margin-top:12px;border-top:1px solid var(--border);padding-top:4px}
+.place-tools p,.place-tools small{font-size:12px;color:var(--muted);line-height:1.6;margin-top:7px}
+.favorites{margin-top:12px}.favorites summary{font-size:13px;cursor:pointer}
+.favorites ul{list-style:none;padding:0;margin-top:8px}.favorites li{display:flex;align-items:center;gap:7px;border-top:1px solid var(--border);padding:7px 0}
+.favorites button{border:0;border-radius:5px;background:var(--sunken);padding:7px;font:inherit;text-align:left}
+.favorites button[data-open]{flex:1;min-width:0;overflow-wrap:anywhere}.favorites small{display:block;font-size:11px;color:var(--muted)}
+.favorite-empty{font-size:12px;color:var(--muted)}
 @media(max-width:640px){.comparison{padding:12px}.comparison th,.comparison td{padding:10px 6px;font-size:12px}.comparison strong{font-size:22px}.compare-place{font-size:13px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -534,6 +541,20 @@ a{color:var(--ride);text-decoration:none} a:hover{text-decoration:underline}
         <button type="button" id="compareAdd1" disabled>設為地點 B</button>
       </div>
       <p id="compareStatus" role="status" aria-live="polite"></p>
+      <div class="place-tools">
+        <div class="compare-actions">
+          <button type="button" id="sharePlace" disabled>複製分享連結</button>
+          <button type="button" id="savePlace" disabled>收藏地址</button>
+        </div>
+        <p id="placeStatus" role="status" aria-live="polite"></p>
+        <div id="shareFallback" hidden><label for="shareUrl">分享連結</label><input id="shareUrl" readonly></div>
+        <p id="localShareNote" hidden>目前是本機網址，只能在這台電腦開啟。對外分享請使用已部署網站的網址。</p>
+        <details class="favorites">
+          <summary>收藏地址 <span id="favoriteCount">0／20</span></summary>
+          <p>收藏保存在這個瀏覽器，包含地點與時段；開啟後會依目前資料重新分析。</p>
+          <ul id="favoriteList"></ul>
+        </details>
+      </div>
     </section>
 
     <!-- 空狀態 + CTA -->
@@ -666,6 +687,7 @@ a{color:var(--ride);text-decoration:none} a:hover{text-decoration:underline}
 </footer>
 
 <script src="/comparison.js"></script>
+<script src="/places.js"></script>
 <script>
 /* ==========================================================================
    0. 設定
@@ -796,6 +818,7 @@ var LH = (function () {
     cancelAnalyze();
     S.origin = [lat, lon];
     S.originName = name || lat.toFixed(5) + ', ' + lon.toFixed(5);
+    Places.begin(S.origin, S.originName, S.timeStart, S.timeHours);
     Comparison.setCurrent(null, '', null);
     S.inBounds = inBox(lat, lon);
     S.data = null; S.focus = -1; S.causeFilter = '';
@@ -940,6 +963,7 @@ var LH = (function () {
   }
 
   function drawResult() {
+    if (!map) return;
     gCandidates.clearLayers(); gMarks.clearLayers(); gPts.clearLayers();
     if (!S.data) return;
     var d = S.data;
@@ -1088,6 +1112,7 @@ var LH = (function () {
   function reset() {
     cancelAnalyze();
     S.origin = S.data = null;
+    Places.begin(null, '', S.timeStart, S.timeHours);
     Comparison.setCurrent(null, '', null);
     S.focus = -1; S.inBounds = true; S.causeFilter = '';
     if (map) {
@@ -1117,6 +1142,7 @@ var LH = (function () {
   function analyze() {
     if (!ready()) return;
     S.data = null;
+    Places.begin(S.origin, S.originName, S.timeStart, S.timeHours);
     Comparison.setCurrent(null, '', null);
     clearResults();
     var seq = ++analyzeSeq;
@@ -1149,6 +1175,7 @@ var LH = (function () {
         if (d && d.error) { UI.error(d); return; }
         S.data = d; $('bSize').hidden = false; setCompact(true);
         Comparison.setCurrent(S.origin, S.originName, d);
+        Places.ready(S.origin, S.originName, S.timeStart, S.timeHours);
         UI.render(d); drawResult();
       })
       .catch(function (err) {
@@ -1193,6 +1220,16 @@ var LH = (function () {
       $('legendIntersection').hidden = true;
       analyze();
     }
+  }
+
+  function restorePlace(value) {
+    S.timeStart = value.start; S.timeHours = value.hours;
+    syncTimeControls();
+    Comparison.setTime(S.timeStart, S.timeHours);
+    $('gq').value = value.name;
+    $('gclear').hidden = !value.name;
+    gsHide();
+    setOrigin(value.lat, value.lon, value.name);
   }
 
   /* ---------- 同步文案與按鈕 ---------- */
@@ -1373,6 +1410,7 @@ var LH = (function () {
   document.addEventListener('DOMContentLoaded', function () {
     Comparison.init();
     init(); bind(); bindSearch(); UI.mode(); sync();
+    Places.init();
     /* CFG.range 只是後端還沒回來之前的預設值。真正的期間以 /api/v3/meta 為準，
        否則重建索引換了資料期間，畫面會靜靜地繼續顯示寫死的舊日期。 */
     showRange(CFG.range);
@@ -1385,7 +1423,7 @@ var LH = (function () {
     $('demoBar').hidden = (API_BASE !== null);
   });
 
-  return { state: function () { return S; }, setOrigin: setOrigin,
+  return { state: function () { return S; }, setOrigin: setOrigin, restorePlace: restorePlace,
            focusX: focusX, clearFocus: clearFocus, setCauseFilter: setCauseFilter,
            analyze: analyze, reset: reset, fit: fit };
 })();
