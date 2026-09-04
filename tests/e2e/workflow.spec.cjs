@@ -42,7 +42,8 @@ test('search → choose place → change time → inspect intersection', async (
   await expect(page.locator('#nv1')).toHaveText(night.stats.accidents + '件');
   await expect(page.locator('#numScope')).toContainText('22:00–隔日 06:00');
   const intersection = night.intersections[0];
-  await page.locator('.leaflet-marker-icon.xn').first().click();
+  // The non-interactive 500m radius label also uses .xn; only select actual buttons.
+  await page.locator('.leaflet-marker-icon.xn[role="button"]').first().click();
   await expect(page.locator('#cardIntersection')).toBeVisible();
   await expect(page.locator('#xDetailTitle')).toHaveText(intersection.name);
   await expect(page.locator('#xPedSummary')).toHaveText(
