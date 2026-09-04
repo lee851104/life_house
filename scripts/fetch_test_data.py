@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 FILES = {"事故索引.db", "路網.npz", "地名.db", "市界.npz", "基準.npz"}
 SHA256 = "0485717325d8287bf82b8fe8bc1463dc8ccc3ca3034976869e6688eb581e4fc1"
-URL = ("https://github.com/ruru0109lee-cpu/lifehouse/releases/download/v1.0.0/"
+URL = ("https://github.com/lee851104/life_house/releases/download/v1.0.0/"
        "lifehouse-data-v1.0.0.zip")
 
 
